@@ -1,0 +1,53 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+.venv/
+venv/
+venv311/
+backend/venv311/
+env/
+*.egg
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+staticfiles/
+media/
+backend/.env
+
+# Node
+node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+npm-debug.log*
+
+# Tauri
+desktop/src-tauri/target/
+desktop/dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Test / Coverage
+.coverage
+coverage.xml
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+
+# Docker
+postgres_data/

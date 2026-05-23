@@ -1,0 +1,6 @@
+name,sku,barcode,category,unit,cost_price,sell_price,low_stock_threshold,is_active
+Blue Ceramic Tile 30x30,TILE-001,8900000000001,Floor Tiles,pcs,180.00,250.00,20,True
+Wall Tile 30x60,TILE-002,8900000000002,Floor Tiles,pcs,150.00,210.00,15,True
+UPVC Pipe 4 inch,PIPE-4IN,8900000000003,Plumbing,pcs,320.00,480.00,10,True
+PVC Elbow 4 inch,ELBOW-4IN,,Plumbing,pcs,45.00,80.00,20,True
+Wash Basin White,WB-001,,Sanitary Fittings,pcs,2800.00,3800.00,2,True
