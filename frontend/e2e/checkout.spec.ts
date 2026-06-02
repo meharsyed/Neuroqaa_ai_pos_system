@@ -54,9 +54,7 @@ test.describe("Checkout happy path", () => {
     // Verify item appeared in cart
     await expect(page.getByRole("table")).toBeVisible();
 
-    // Adjust qty to 2 using the + button
-    const plusBtn = page.locator("button").filter({ has: page.locator("svg") }).first();
-    // Use keyboard shortcut instead — select first row and press +
+    // Adjust qty to 2 using the + button — use keyboard shortcut instead
     await page.locator("tr").nth(1).click();
     await page.keyboard.press("+");
     await expect(page.locator("td").filter({ hasText: "2" }).first()).toBeVisible();
@@ -73,7 +71,6 @@ test.describe("Checkout happy path", () => {
     await expect(page.getByText("Complete Payment")).toBeVisible();
 
     // Cash is pre-selected; enter a round amount
-    const totalText = await page.locator("text=TOTAL").locator("..").textContent();
     // Just enter a round Rs. 2000 as tendered cash
     const tenderedInput = page.locator("input[type='number']").last();
     await tenderedInput.fill("2000");
