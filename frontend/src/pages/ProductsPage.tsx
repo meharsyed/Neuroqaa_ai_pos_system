@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Plus, Upload, PackageX, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,15 +10,6 @@ import { StockInModal } from "@/components/catalog/StockInModal";
 import { catalogApi } from "@/lib/catalog";
 import type { Product, ProductFilters } from "@/types/catalog";
 
-function useDebounce<T>(value: T, delay = 300): T {
-  const [debounced, setDebounced] = useState(value);
-  const timeoutRef = useState<ReturnType<typeof setTimeout> | null>(null);
-  useState(() => {
-    const id = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(id);
-  });
-  return debounced;
-}
 
 export default function ProductsPage() {
   const [search, setSearch] = useState("");

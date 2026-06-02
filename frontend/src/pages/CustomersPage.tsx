@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Users, Search, Plus, X, ChevronLeft, ChevronRight,
-  Phone, User, TrendingUp, Loader2,
+  Phone, TrendingUp, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";

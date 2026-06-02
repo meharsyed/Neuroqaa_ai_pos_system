@@ -12,7 +12,7 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { catalogApi, rupeesToPaise } from "@/lib/catalog";
-import type { Category, Product, UNIT_OPTIONS } from "@/types/catalog";
+import type { Category, Product } from "@/types/catalog";
 
 const schema = z.object({
   name: z.string().min(1, "Name is required"),
