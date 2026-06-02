@@ -6,7 +6,14 @@ export const salesApi = {
   create: (data: CreateSalePayload) =>
     apiClient.post<Sale>("/sales/", data).then((r) => r.data),
 
-  list: (params?: { status?: string; page?: number }) =>
+  list: (params?: {
+    status?: string;
+    page?: number;
+    search?: string;
+    date_from?: string;
+    date_to?: string;
+    customer?: number;
+  }) =>
     apiClient.get<PaginatedResponse<Sale>>("/sales/", { params }).then((r) => r.data),
 
   get: (id: number) =>

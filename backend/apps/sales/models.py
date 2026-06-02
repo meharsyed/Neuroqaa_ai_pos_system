@@ -23,7 +23,9 @@ class Shift(models.Model):
     opened_at = models.DateTimeField(auto_now_add=True)
     closed_at = models.DateTimeField(null=True, blank=True)
     opening_float_paise = models.BigIntegerField(default=0)
+    closing_cash_paise = models.BigIntegerField(null=True, blank=True)
     notes = models.TextField(blank=True)
+    closing_notes = models.TextField(blank=True)
 
     class Meta:
         ordering = ["-opened_at"]
@@ -46,6 +48,12 @@ class Sale(models.Model):
     )
     cashier = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="sales"
+    )
+    customer = models.ForeignKey(
+        "customers.Customer",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="sales",
     )
     status = models.CharField(
         max_length=20, choices=Status.choices, default=Status.COMPLETED

@@ -13,6 +13,7 @@ export interface CreateSalePayload {
   amount_tendered_paise: number;
   discount_paise?: number;
   notes?: string;
+  customer_id?: number | null;
 }
 
 export interface SaleItemRecord {
@@ -39,6 +40,9 @@ export interface Sale {
   status: "completed" | "voided";
   cashier: number;
   cashier_name: string;
+  customer: number | null;
+  customer_name: string | null;
+  customer_phone: string | null;
   subtotal_paise: number;
   discount_paise: number;
   tax_paise: number;
@@ -59,5 +63,6 @@ export interface CartItem {
   product_unit: string;
   qty: number;
   unit_price_paise: number;
-  discount_paise: number;
+  discount_pct: number;   // 0–100, entered by user; drives discount_paise
+  discount_paise: number; // derived: round(qty × unit_price_paise × discount_pct / 100)
 }

@@ -5,6 +5,11 @@ import LoginPage from "@/pages/LoginPage";
 import DashboardPage from "@/pages/DashboardPage";
 import ProductsPage from "@/pages/ProductsPage";
 import CheckoutPage from "@/pages/CheckoutPage";
+import ReportsPage from "@/pages/ReportsPage";
+import BillsPage from "@/pages/BillsPage";
+import ShiftsPage from "@/pages/ShiftsPage";
+import CustomersPage from "@/pages/CustomersPage";
+import SettingsPage from "@/pages/SettingsPage";
 
 export const router = createBrowserRouter([
   {
@@ -25,6 +30,11 @@ export const router = createBrowserRouter([
       { path: "/", element: <DashboardPage /> },
       { path: "/dashboard", element: <DashboardPage /> },
       { path: "/products", element: <ProductsPage /> },
+      { path: "/bills",     element: <BillsPage /> },
+      { path: "/reports",   element: <ReportsPage /> },
+      { path: "/customers", element: <CustomersPage /> },
+      { path: "/shifts",    element: <ShiftsPage /> },
+      { path: "/settings",  element: <SettingsPage /> },
     ],
   },
 ]);

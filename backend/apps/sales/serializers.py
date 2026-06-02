@@ -4,7 +4,7 @@ from rest_framework import serializers
 
 from apps.catalog.models import Product
 
-from .models import Payment, Sale, SaleItem
+from .models import Payment, Sale, SaleItem, Shift
 
 
 class PaymentSerializer(serializers.ModelSerializer):
@@ -27,15 +27,18 @@ class SaleItemSerializer(serializers.ModelSerializer):
 
 
 class SaleSerializer(serializers.ModelSerializer):
-    items = SaleItemSerializer(many=True, read_only=True)
-    payment = PaymentSerializer(read_only=True)
-    cashier_name = serializers.SerializerMethodField()
+    items         = SaleItemSerializer(many=True, read_only=True)
+    payment       = PaymentSerializer(read_only=True)
+    cashier_name  = serializers.SerializerMethodField()
+    customer_name = serializers.SerializerMethodField()
+    customer_phone = serializers.SerializerMethodField()
 
     class Meta:
         model = Sale
         fields = [
             "id", "sale_number", "status",
             "cashier", "cashier_name",
+            "customer", "customer_name", "customer_phone",
             "subtotal_paise", "discount_paise", "tax_paise", "total_paise",
             "notes", "items", "payment",
             "voided_by", "voided_at", "created_at",
@@ -43,6 +46,12 @@ class SaleSerializer(serializers.ModelSerializer):
 
     def get_cashier_name(self, obj) -> str:
         return obj.cashier.get_full_name() or obj.cashier.email
+
+    def get_customer_name(self, obj) -> str | None:
+        return obj.customer.name if obj.customer else None
+
+    def get_customer_phone(self, obj) -> str | None:
+        return obj.customer.phone if obj.customer else None
 
 
 # ── Input serializers ──────────────────────────────────────────────────────
@@ -69,7 +78,41 @@ class CreateSaleSerializer(serializers.Serializer):
     discount_paise = serializers.IntegerField(min_value=0, default=0)
     notes = serializers.CharField(max_length=500, allow_blank=True, default="")
 
+    customer_id = serializers.IntegerField(min_value=1, required=False, allow_null=True)
+
     def validate_items(self, value):
         if not value:
             raise serializers.ValidationError("A sale must have at least one item.")
         return value
+
+
+# ── Shift serializers ──────────────────────────────────────────────────────────
+
+class ShiftSerializer(serializers.ModelSerializer):
+    cashier_name = serializers.SerializerMethodField()
+    is_open = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Shift
+        fields = [
+            "id", "cashier", "cashier_name",
+            "opened_at", "closed_at",
+            "opening_float_paise", "closing_cash_paise", "closing_notes",
+            "notes", "is_open",
+        ]
+
+    def get_cashier_name(self, obj) -> str:
+        return obj.cashier.get_full_name() or obj.cashier.email
+
+    def get_is_open(self, obj) -> bool:
+        return obj.closed_at is None
+
+
+class OpenShiftSerializer(serializers.Serializer):
+    opening_float_paise = serializers.IntegerField(min_value=0, default=0)
+    notes = serializers.CharField(max_length=500, allow_blank=True, default="")
+
+
+class CloseShiftSerializer(serializers.Serializer):
+    closing_cash_paise = serializers.IntegerField(min_value=0)
+    closing_notes = serializers.CharField(max_length=500, allow_blank=True, default="")

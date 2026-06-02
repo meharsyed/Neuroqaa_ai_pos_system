@@ -1,3 +1,6 @@
+from decimal import Decimal
+
+from django import forms
 from django.contrib import admin
 from django.utils.html import format_html
 from import_export.admin import ImportExportModelAdmin
@@ -5,6 +8,45 @@ from import_export.admin import ImportExportModelAdmin
 from .models import Category, Inventory, Product, StockMovement
 from .money import Money
 from .resources import ProductResource
+
+
+class ProductAdminForm(forms.ModelForm):
+    """
+    Admin form that accepts prices in Rupees (decimal) rather than raw paise.
+    Conversion: Rs. → paise happens in save(); paise → Rs. happens in __init__.
+    The underlying model fields (cost_price_paise, sell_price_paise) are never
+    shown directly — the user only ever sees Rs. values.
+    """
+
+    cost_price_rs = forms.DecimalField(
+        max_digits=10, decimal_places=2, min_value=Decimal("0"),
+        label="Cost Price (Rs.)",
+        help_text="Price you paid per unit. e.g. 250.00",
+    )
+    sell_price_rs = forms.DecimalField(
+        max_digits=10, decimal_places=2, min_value=Decimal("0"),
+        label="Sell Price (Rs.)",
+        help_text="Price charged to customer. e.g. 380.00",
+    )
+
+    class Meta:
+        model = Product
+        exclude = ["cost_price_paise", "sell_price_paise"]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.instance.pk:
+            self.fields["cost_price_rs"].initial = Decimal(self.instance.cost_price_paise) / 100
+            self.fields["sell_price_rs"].initial = Decimal(self.instance.sell_price_paise) / 100
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.cost_price_paise = int(self.cleaned_data["cost_price_rs"] * 100)
+        instance.sell_price_paise = int(self.cleaned_data["sell_price_rs"] * 100)
+        if commit:
+            instance.save()
+            self.save_m2m()
+        return instance
 
 
 @admin.register(Category)
@@ -17,6 +59,7 @@ class CategoryAdmin(admin.ModelAdmin):
 
 @admin.register(Product)
 class ProductAdmin(ImportExportModelAdmin):
+    form = ProductAdminForm
     resource_classes = [ProductResource]
     list_display = [
         "sku", "name", "category", "unit",
@@ -29,14 +72,14 @@ class ProductAdmin(ImportExportModelAdmin):
     readonly_fields = ["created_at", "updated_at"]
     fieldsets = [
         (None, {"fields": ["name", "sku", "barcode", "category", "unit", "description", "is_active"]}),
-        ("Pricing (paise = Rs × 100)", {"fields": ["cost_price_paise", "sell_price_paise"]}),
+        ("Pricing", {"fields": ["cost_price_rs", "sell_price_rs"]}),
         ("Inventory", {"fields": ["low_stock_threshold"]}),
         ("Timestamps", {"fields": ["created_at", "updated_at"], "classes": ["collapse"]}),
     ]
 
     def display_cost(self, obj):
         return str(Money(obj.cost_price_paise))
-    display_cost.short_description = "Cost"
+    display_cost.short_description = "Cost Price"
 
     def display_sell(self, obj):
         return str(Money(obj.sell_price_paise))

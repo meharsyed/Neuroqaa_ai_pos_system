@@ -1,19 +1,28 @@
 # Neuroqaa POS System
 
-A dual-mode Point of Sale system — runs as a native desktop app (Tauri) and as cloud SaaS.
+A dual-mode Point of Sale system built by **[Neuroqaa.ai](https://neuroqaa.ai)** — runs as a native desktop app (Tauri/SQLite) and as a cloud SaaS (PostgreSQL).
 
-> **Current state:** Phase 1 complete — Foundation Sprint. Working Django + DRF + React skeleton with JWT auth. No business features yet.
+> **Current state: Phase 4 complete.** Full POS cycle operational — product catalogue, checkout, receipts, shift management, reports, and settings.
 
 ---
 
 ## What this system is
 
-Neuroqaa POS is a Point of Sale platform built for two deployment modes:
+Neuroqaa POS is a Point of Sale platform for retail shops, initially targeting sanitary and tiles shops in Quetta, Balochistan, Pakistan. It is designed for two deployment modes:
 
-- **Desktop mode** — bundles the entire stack into a Tauri (Rust) native app that runs offline with SQLite. Ideal for shops with no reliable internet.
-- **Cloud/SaaS mode** — the same Django backend served from a cloud host, using PostgreSQL. Multi-tenant ready.
+- **Desktop mode** — bundled as a Tauri native app with SQLite, works fully offline. Ideal for shops without reliable internet.
+- **Cloud/SaaS mode** — the same Django backend on a cloud host using PostgreSQL. Multi-tenant-ready (`tenant_id` on every business model).
 
-Phase 1 establishes the skeleton that all future phases build on: custom user model, JWT auth, settings split, React SPA with route guards, CI pipeline, and pre-commit hooks.
+---
+
+## Phases completed
+
+| Phase | What was built |
+|---|---|
+| 1 — Foundation | Django + DRF skeleton, custom User model, JWT auth, React SPA + route guards, CI/CD |
+| 2 — Catalogue | Products, Categories, Inventory, Stock Movements, barcode lookup, import/export CSV |
+| 3 — Checkout | Cart UI, keyboard-first checkout (F2/F3/F9/F12), atomic sale creation, payment modal, void sales |
+| 4 — Operations | ESC/POS + PDF receipts, daily/range/inventory reports, CSV export, shift open/close + cash reconciliation, shop settings |
 
 ---
 
@@ -21,13 +30,16 @@ Phase 1 establishes the skeleton that all future phases build on: custom user mo
 
 | Layer | Technology |
 |---|---|
-| Backend API | Django 5 + DRF + simplejwt |
-| Frontend | React 18 + Vite + TypeScript + Tailwind + shadcn/ui |
-| Desktop shell | Tauri (Rust) — Phase 3 |
-| Desktop DB | SQLite |
-| Cloud DB | PostgreSQL 16 |
-| State (server) | TanStack Query |
-| State (UI) | Zustand |
+| Backend API | Django 5 + Django REST Framework + simplejwt |
+| Frontend | React 18 + Vite + TypeScript + Tailwind CSS + shadcn/ui |
+| Desktop shell | Tauri (Rust) — future phase |
+| Desktop DB | SQLite (`config.settings.desktop`) |
+| Cloud DB | PostgreSQL 16 (`config.settings.dev` / `cloud`) |
+| Server state | TanStack Query (React Query) |
+| UI state | Zustand (persisted to localStorage) |
+| Forms | react-hook-form + zod |
+| PDF receipts | ReportLab |
+| Thermal printing | python-escpos (network mode) |
 | CI | GitHub Actions |
 
 ---
@@ -36,301 +48,172 @@ Phase 1 establishes the skeleton that all future phases build on: custom user mo
 
 ```
 pos-system-GT/
-├── backend/                    Django API
+├── backend/
 │   ├── apps/
-│   │   └── accounts/           Custom User model + JWT auth
+│   │   ├── accounts/          Custom User model, JWT auth views
+│   │   ├── catalog/           Product, Category, Inventory, StockMovement
+│   │   ├── sales/             Sale, SaleItem, Payment, Shift + services
+│   │   └── config/            Setting model (shop config key/value store)
 │   ├── config/
-│   │   └── settings/           base / dev / desktop / cloud
-│   └── requirements/           base / dev / prod
-├── frontend/                   React + Vite SPA
+│   │   ├── settings/
+│   │   │   ├── base.py        Shared settings (never import directly)
+│   │   │   ├── dev.py         PostgreSQL + debug toolbar
+│   │   │   ├── desktop.py     SQLite (offline / Tauri mode)
+│   │   │   └── cloud.py       PostgreSQL from DATABASE_URL (production)
+│   │   ├── urls.py
+│   │   ├── wsgi.py
+│   │   └── asgi.py
+│   ├── requirements/
+│   │   ├── base.txt           Core packages including reportlab + python-escpos
+│   │   ├── dev.txt
+│   │   └── prod.txt
+│   ├── manage.py
+│   └── pytest.ini
+├── frontend/
 │   └── src/
-│       ├── pages/              LoginPage, DashboardPage
-│       ├── layouts/            ProtectedLayout (route guard)
-│       ├── store/              Zustand auth store
-│       ├── lib/                Axios client + QueryClient
-│       └── types/              TypeScript interfaces
-├── desktop/                    Tauri shell (Phase 3)
+│       ├── pages/             LoginPage, DashboardPage, ProductsPage,
+│       │                      CheckoutPage, ReportsPage, ShiftsPage, SettingsPage
+│       ├── layouts/           ProtectedLayout (sidebar), CheckoutLayout (fullscreen)
+│       ├── components/
+│       │   ├── ui/            Button, Input, Label, Badge, Select (shadcn-style)
+│       │   └── checkout/      PaymentModal
+│       ├── lib/               axios.ts, catalog.ts, sales.ts, config.ts,
+│       │                      reports.ts, shifts.ts
+│       ├── store/             authStore.ts (Zustand)
+│       ├── types/             auth.ts, catalog.ts, sales.ts, config.ts
+│       └── router/            index.tsx
 ├── docs/
-│   └── adr/                    Architecture Decision Records
+│   ├── PROJECT_CONTEXT.md     ← Full system context for AI assistants & developers
+│   ├── setup-and-testing.md   Phase 1 detailed setup guide
+│   └── adr/
+│       └── 0001-stack-selection.md
 └── docker-compose.yml
 ```
 
 ---
 
-## How it works (Phase 1 flow)
+## Quick start (local — no Docker)
 
-```
-Browser  →  React SPA (Vite :5173)
-               │
-               │  POST /api/auth/login/   { email, password }
-               ↓
-           Django API (:8000)
-               │
-               ├── returns { access, refresh, user }
-               │
-               │  Every subsequent request:
-               │  Authorization: Bearer <access_token>
-               │
-               ├── GET /api/auth/me/      → current user data
-               └── POST /api/auth/refresh/ → new access token
-```
-
-Key pieces:
-- **Custom User model** (`accounts.User`) extends `AbstractUser`. Uses `email` as the login field. Has a `role` field: `owner / manager / cashier / stock_clerk`.
-- **JWT tokens**: access token lives 30 min (dev) or 8 hr (desktop). Refresh token lives 7 days (dev) or 30 days (desktop).
-- **Axios interceptor**: automatically attaches `Bearer` token to every request. On a 401, silently refreshes the access token using the stored refresh token. If refresh fails, logs the user out and redirects to `/login`.
-- **Zustand store**: persists auth state to `localStorage` so users stay logged in across page refreshes.
-- **Route guard** (`ProtectedLayout`): any route that isn't `/login` redirects to login if unauthenticated.
-- **Settings split**: `base.py` is never imported directly. `dev.py` adds Postgres + debug toolbar. `desktop.py` uses SQLite. `cloud.py` adds Postgres from `DATABASE_URL`.
-
----
-
-## Local testing — two paths
-
-### Path A: Docker Compose (recommended — closest to production)
-
-**Prerequisites:** Docker Desktop must be running.
-
-#### Step 1 — Verify Docker is running
-
-```powershell
-docker info
-```
-
-You should see engine info. If you get an error, start Docker Desktop first.
-
-#### Step 2 — Configure the backend env file
-
-```powershell
-cd "d:\Neuroqaa Stuff\POS System\pos-system-GT\backend"
-copy .env.example .env
-```
-
-The defaults in `.env.example` already match the `docker-compose.yml` values — no edits needed.
-
-#### Step 3 — Build and start all services
-
-From the project root:
-
-```powershell
-cd "d:\Neuroqaa Stuff\POS System\pos-system-GT"
-docker-compose up --build
-```
-
-This starts three containers:
-1. `db` — PostgreSQL 16 on port `5432`
-2. `backend` — Django API on port `8000` (auto-runs `migrate` on startup)
-3. `frontend` — Vite dev server on port `5173`
-
-First run takes 2–4 minutes (builds the Python image). Subsequent starts are fast.
-
-Wait until you see:
-```
-backend  | Starting development server at http://0.0.0.0:8000/
-frontend | VITE ready in ...ms
-```
-
-#### Step 4 — Create a superuser
-
-Open a **second terminal** (keep docker-compose running in the first):
-
-```powershell
-docker-compose exec backend python manage.py createsuperuser
-```
-
-You will be prompted for:
-- **Email address** — e.g., `admin@neuroqaa.com`
-- **Username** — e.g., `admin`
-- **First name** — e.g., `Admin`
-- **Last name** — e.g., `User`
-- **Password** — e.g., `StrongPass123!` (min 8 chars, not too common)
-
-#### Step 5 — Open and verify everything
-
-| URL | What you should see |
-|---|---|
-| http://localhost:5173 | React login page → redirects to `/login` |
-| http://localhost:5173/login | Login form |
-| http://localhost:8000/api/docs/ | Swagger UI — all API endpoints |
-| http://localhost:8000/admin/ | Django admin — log in with superuser creds |
-
-#### Step 6 — Phase 1 exit criteria checklist
-
-1. Go to http://localhost:5173/login
-2. Enter the email + password you created in Step 4
-3. Click **Sign in**
-4. You should land on `/dashboard`
-5. Open browser DevTools → Network tab → look for `GET /api/auth/login/` — response should include `access`, `refresh`, and `user` fields
-6. In DevTools Network, you should see `GET /api/auth/me/` returning your user data
-7. Refresh the page — you should stay logged in (Zustand persists to localStorage)
-8. Go to http://localhost:8000/admin/ and log in — you should see "Neuroqaa POS Admin" branding
-9. Go to http://localhost:8000/api/docs/ — you should see the Swagger docs for `/auth/login/`, `/auth/refresh/`, `/auth/me/`
-
-#### Step 7 — Run backend tests (inside Docker)
-
-```powershell
-docker-compose exec backend pytest
-```
-
-Expected output: 5 tests pass (TestLoginEndpoint + TestMeEndpoint).
-
-#### Step 8 — Stop everything
-
-```powershell
-# Ctrl+C to stop the compose stack, then:
-docker-compose down
-# To also delete the Postgres volume (fresh start next time):
-docker-compose down -v
-```
-
----
-
-### Path B: Local without Docker (SQLite — no Postgres needed)
-
-Use this if you don't want to run Docker. The backend uses SQLite (`config.settings.desktop`) instead of Postgres. Everything else is identical.
-
-#### Step 1 — Activate the existing Python virtual environment
-
-A `venv311` (Python 3.11) is already created and has all packages installed:
+### Terminal 1 — Django backend
 
 ```powershell
 cd "d:\Neuroqaa Stuff\POS System\pos-system-GT\backend"
 .\venv311\Scripts\Activate.ps1
-```
-
-Your prompt should now show `(venv311)`.
-
-If you get an execution policy error, run first:
-```powershell
-Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-```
-
-#### Step 2 — Verify packages are installed
-
-```powershell
-pip list | Select-String "django|drf|simplejwt"
-```
-
-You should see Django, djangorestframework, djangorestframework-simplejwt, etc.
-
-If packages are missing (fresh checkout):
-```powershell
-pip install -r requirements\dev.txt
-```
-
-#### Step 3 — Run database migrations (SQLite)
-
-```powershell
 $env:DJANGO_SETTINGS_MODULE = "config.settings.desktop"
 python manage.py migrate
-```
-
-This creates `backend\data\pos.db` (SQLite file). You should see Django printing migration steps.
-
-#### Step 4 — Create a superuser
-
-```powershell
-python manage.py createsuperuser
-```
-
-Prompts:
-- **Email address** — e.g., `admin@neuroqaa.com`
-- **Username** — e.g., `admin`
-- **First name** — e.g., `Admin`
-- **Last name** — e.g., `User`
-- **Password** — e.g., `StrongPass123!`
-
-#### Step 5 — Start the Django dev server
-
-```powershell
+python manage.py createsuperuser   # use email + password you'll remember
 python manage.py runserver
 ```
 
-API is now at http://localhost:8000
-
-#### Step 6 — Start the React frontend (new terminal)
-
-Open a **second terminal** in VS Code (`Ctrl+Shift+\`` then `+`):
+### Terminal 2 — React frontend
 
 ```powershell
 cd "d:\Neuroqaa Stuff\POS System\pos-system-GT\frontend"
-npm install
+npm install   # first time only
 npm run dev
 ```
 
-Frontend is now at http://localhost:5173
+Open **http://localhost:5173** and sign in with the superuser credentials.
 
-#### Step 7 — Test the login flow
+> **First-time setup only:** After starting, go to `/admin/` and add at least one Category and one Product with stock before testing checkout.
 
-Same checklist as Path A Step 6 above.
+---
 
-#### Step 8 — Run backend tests (SQLite mode)
+## Running tests
 
 ```powershell
-# Still in the backend directory with venv311 active:
-$env:DJANGO_SETTINGS_MODULE = "config.settings.desktop"
-pytest --override-ini="DJANGO_SETTINGS_MODULE=config.settings.desktop"
+# Backend (with venv active, DJANGO_SETTINGS_MODULE set)
+pytest -v
+
+# Frontend type check
+cd frontend && npm run type-check
 ```
 
 ---
 
-## Running individual frontend checks
+## API endpoints (Phase 4)
 
-From `frontend/`:
-
-```powershell
-npm run type-check    # TypeScript — should report 0 errors
-npm run lint          # ESLint — should report 0 warnings
-npm test              # Vitest — runs unit tests
-```
-
----
-
-## API endpoints reference
-
+### Auth
 | Method | URL | Auth | Description |
 |---|---|---|---|
-| POST | `/api/auth/login/` | None | Login — returns `{ access, refresh, user }` |
-| POST | `/api/auth/refresh/` | None | Exchange refresh token for new access token |
-| GET | `/api/auth/me/` | Bearer | Returns current user data |
-| GET | `/api/docs/` | None | Swagger UI |
-| GET | `/api/schema/` | None | Raw OpenAPI schema (JSON) |
-| `*` | `/admin/` | Session | Django admin |
+| POST | `/api/auth/login/` | — | Returns `{ access, refresh, user }` |
+| POST | `/api/auth/refresh/` | — | Rotate refresh token |
+| GET | `/api/auth/me/` | Bearer | Current user |
 
-### Quick API test with curl / PowerShell
+### Catalogue
+| Method | URL | Auth | Description |
+|---|---|---|---|
+| GET/POST | `/api/products/` | Bearer | List / create products |
+| GET/PATCH | `/api/products/{id}/` | Bearer | Retrieve / update |
+| GET | `/api/products/low-stock/` | Bearer | Products below threshold |
+| GET | `/api/products/barcode/{barcode}/` | Bearer | Barcode lookup |
+| POST | `/api/products/import/` | Bearer | Bulk CSV import |
+| GET/POST | `/api/categories/` | Bearer | Categories |
+| GET | `/api/inventory/` | Bearer | Inventory levels |
+| POST | `/api/inventory/stock-in/` | Bearer | Add stock |
 
-```powershell
-# Login
-$login = Invoke-RestMethod -Method Post `
-  -Uri "http://localhost:8000/api/auth/login/" `
-  -ContentType "application/json" `
-  -Body '{"email":"admin@neuroqaa.com","password":"StrongPass123!"}'
+### Sales
+| Method | URL | Auth | Description |
+|---|---|---|---|
+| POST | `/api/sales/` | Bearer | Create atomic sale |
+| GET | `/api/sales/` | Bearer | List sales |
+| GET | `/api/sales/{id}/` | Bearer | Sale detail |
+| POST | `/api/sales/{id}/void/` | Bearer (owner/mgr) | Void sale |
+| GET | `/api/sales/{id}/receipt/text/` | Bearer | Plain-text receipt |
+| GET | `/api/sales/{id}/receipt/pdf/` | Bearer | PDF receipt (ReportLab) |
+| POST | `/api/sales/{id}/receipt/print/` | Bearer | Send to thermal printer |
 
-$login.access    # access token
-$login.user      # user object
+### Shifts
+| Method | URL | Auth | Description |
+|---|---|---|---|
+| POST | `/api/shifts/` | Bearer | Open shift |
+| GET | `/api/shifts/` | Bearer | List shifts |
+| GET | `/api/shifts/current/` | Bearer | Current open shift (404 if none) |
+| POST | `/api/shifts/{id}/close/` | Bearer | Close shift → variance summary |
 
-# Hit /me/ with the token
-Invoke-RestMethod -Method Get `
-  -Uri "http://localhost:8000/api/auth/me/" `
-  -Headers @{ Authorization = "Bearer $($login.access)" }
-```
+### Reports
+| Method | URL | Auth | Description |
+|---|---|---|---|
+| GET | `/api/reports/daily/?date=YYYY-MM-DD` | Bearer | Daily summary JSON |
+| GET | `/api/reports/daily/?date=...&export=csv` | Bearer | Daily summary CSV download |
+| GET | `/api/reports/date-range/?start=...&end=...` | Bearer | Multi-day summary |
+| GET | `/api/reports/inventory/` | Bearer | Inventory valuation JSON |
+| GET | `/api/reports/inventory/?export=csv` | Bearer | Inventory valuation CSV |
+
+### Settings
+| Method | URL | Auth | Description |
+|---|---|---|---|
+| GET | `/api/settings/` | Bearer | All shop settings |
+| GET | `/api/settings/{key}/` | Bearer | Single setting |
+| PATCH | `/api/settings/{key}/` | Bearer (owner/mgr) | Update setting value |
+
+### Admin & docs
+| URL | Description |
+|---|---|
+| `/admin/` | Django admin (session auth) |
+| `/api/docs/` | Swagger UI |
+| `/api/schema/` | OpenAPI 3.1 JSON |
 
 ---
 
-## Pre-commit hooks setup (optional for local dev)
+## Key architectural rules (do not break these)
 
-```powershell
-# From project root, with venv active:
-pip install pre-commit
-pre-commit install
-```
-
-On every `git commit`, this auto-runs ruff lint + black format check on staged Python files.
+1. **Money is always stored as integer paise.** `1 Rs = 100 paise`. Never use FloatField for money. Use `Money(paise)` from `apps.catalog.money` to format for display.
+2. **`StockMovement` is append-only.** Its `save()` raises `ValueError` if the record already has a PK. Never call `delete()` on one.
+3. **`create_sale()` is the only way to create a Sale.** It sorts product_ids before locking (deadlock prevention), aggregates qty per product (oversell guard), and wraps everything in `transaction.atomic()`.
+4. **Settings module is never imported directly.** Always use a concrete settings file (`dev`, `desktop`, or `cloud`). Set `DJANGO_SETTINGS_MODULE` explicitly.
+5. **CSV export uses `?export=csv` (not `?format=csv`).** DRF intercepts `?format=` for its own content negotiation — using `format` as a parameter name causes a 404.
 
 ---
 
 ## Architecture decisions
 
-See [docs/adr/](docs/adr/) for all Architecture Decision Records.
+See [docs/adr/](docs/adr/) for full Architecture Decision Records.
 
 - [ADR 0001 — Stack Selection](docs/adr/0001-stack-selection.md)
+
+For complete system context (all phases, every file, patterns, gotchas) see [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md).
+
+---
+
+*Built by [Neuroqaa.ai](https://neuroqaa.ai) — Modern POS for Modern Businesses.*

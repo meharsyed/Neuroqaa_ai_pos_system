@@ -169,6 +169,7 @@ class TestOversellGuard:
             )
 
     def test_no_side_effects_on_oversell(self, cashier, product):
+        product.inventory.refresh_from_db()
         initial_qty = product.inventory.stock_qty
         initial_sale_count = Sale.objects.count()
 
@@ -198,6 +199,7 @@ class TestOversellGuard:
 @pytest.mark.django_db
 class TestSaleAtomicity:
     def test_full_rollback_on_simulated_crash(self, cashier, product):
+        product.inventory.refresh_from_db()
         initial_qty = product.inventory.stock_qty
         initial_sale_count = Sale.objects.count()
 

@@ -6,7 +6,7 @@ from django.utils import timezone
 from apps.catalog.models import Inventory, StockMovement
 from apps.catalog.services import apply_stock_movement
 
-from .models import Payment, Sale, SaleItem
+from .models import Payment, Sale, SaleItem, Shift
 
 
 def _generate_sale_number(sale: Sale) -> str:
@@ -19,6 +19,32 @@ def _generate_sale_number(sale: Sale) -> str:
     return f"SALE-{today:%Y%m%d}-{sale.pk:05d}"
 
 
+def get_shift_reconciliation(*, shift) -> dict:
+    """
+    Pre-close cash summary for an open shift — does NOT close it.
+    Returns expected cash = opening_float + all cash sales this shift.
+    """
+    from django.db.models import Count, Sum
+    from django.db.models.functions import Coalesce
+
+    completed = shift.sales.filter(status=Sale.Status.COMPLETED)
+    agg = completed.aggregate(
+        total_revenue=Coalesce(Sum("total_paise"), 0),
+        total_count=Count("id"),
+    )
+    cash_sales_total = completed.filter(payment__method="cash").aggregate(
+        total=Coalesce(Sum("total_paise"), 0)
+    )["total"]
+
+    return {
+        "opening_float_paise": shift.opening_float_paise,
+        "cash_sales_total_paise": cash_sales_total,
+        "expected_cash_paise": shift.opening_float_paise + cash_sales_total,
+        "total_sales": agg["total_count"],
+        "total_revenue_paise": agg["total_revenue"],
+    }
+
+
 def create_sale(
     *,
     cashier,
@@ -27,6 +53,7 @@ def create_sale(
     amount_tendered_paise: int,
     discount_paise: int = 0,
     notes: str = "",
+    customer_id: int | None = None,
 ) -> Sale:
     """
     Atomically create a completed sale. All steps are inside one transaction —
@@ -88,9 +115,19 @@ def create_sale(
         total_paise = subtotal_paise - discount_paise
         change_paise = max(0, amount_tendered_paise - total_paise)
 
+        # Auto-link this sale to the cashier's current open shift (if any).
+        # Shift must be queried INSIDE the atomic block so the lock is held consistently.
+        open_shift = (
+            Shift.objects.filter(cashier=cashier, closed_at__isnull=True)
+            .order_by("-opened_at")
+            .first()
+        )
+
         # Create Sale — sale_number starts as a UUID placeholder
         sale = Sale.objects.create(
             cashier=cashier,
+            shift=open_shift,
+            customer_id=customer_id,
             status=Sale.Status.COMPLETED,
             subtotal_paise=subtotal_paise,
             discount_paise=discount_paise,
@@ -136,6 +173,56 @@ def create_sale(
         )
 
     return sale
+
+
+# ── Shift services ─────────────────────────────────────────────────────────────
+
+def open_shift(*, cashier, opening_float_paise: int = 0, notes: str = "") -> Shift:
+    """Open a new shift for the cashier. No validation on concurrent open shifts."""
+    return Shift.objects.create(
+        cashier=cashier,
+        opening_float_paise=opening_float_paise,
+        notes=notes,
+    )
+
+
+def close_shift(*, shift: Shift, closing_cash_paise: int, closing_notes: str = "") -> dict:
+    """
+    Close an open shift. Returns a variance summary dict.
+    expected_cash = opening_float + sum of all cash sale totals in this shift.
+    """
+    from django.db.models import Count, Sum
+    from django.db.models.functions import Coalesce
+
+    if shift.closed_at is not None:
+        raise ValueError("Shift is already closed.")
+
+    completed = shift.sales.filter(status=Sale.Status.COMPLETED)
+    agg = completed.aggregate(
+        total_revenue=Coalesce(Sum("total_paise"), 0),
+        total_count=Count("id"),
+    )
+    cash_sales_total = completed.filter(payment__method="cash").aggregate(
+        total=Coalesce(Sum("total_paise"), 0)
+    )["total"]
+
+    expected_cash_paise = shift.opening_float_paise + cash_sales_total
+    variance_paise = closing_cash_paise - expected_cash_paise
+
+    shift.closed_at = timezone.now()
+    shift.closing_cash_paise = closing_cash_paise
+    shift.closing_notes = closing_notes
+    shift.save(update_fields=["closed_at", "closing_cash_paise", "closing_notes"])
+
+    return {
+        "opening_float_paise": shift.opening_float_paise,
+        "cash_sales_total_paise": cash_sales_total,
+        "expected_cash_paise": expected_cash_paise,
+        "actual_cash_paise": closing_cash_paise,
+        "variance_paise": variance_paise,
+        "total_sales": agg["total_count"],
+        "total_revenue_paise": agg["total_revenue"],
+    }
 
 
 def void_sale(*, sale: Sale, voided_by) -> Sale:
