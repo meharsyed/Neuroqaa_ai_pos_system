@@ -1,6 +1,5 @@
-from rest_framework import mixins, status, viewsets
+from rest_framework import mixins, viewsets
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
 
 from .models import Setting
 from .serializers import SettingSerializer

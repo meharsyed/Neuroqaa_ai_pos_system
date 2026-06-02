@@ -1,9 +1,9 @@
+from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from django_filters.rest_framework import DjangoFilterBackend
 
 from .models import Customer
 from .serializers import CustomerSerializer
@@ -47,8 +47,7 @@ class CustomerViewSet(
 
         customer = self.get_object()
         qs = (
-            Sale.objects
-            .filter(customer=customer)
+            Sale.objects.filter(customer=customer)
             .select_related("cashier", "payment", "customer")
             .prefetch_related("items__product")
             .order_by("-created_at")

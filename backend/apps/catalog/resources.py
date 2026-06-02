@@ -19,7 +19,7 @@ class DecimalToIntPaiseWidget(Widget):
         try:
             return int(Decimal(str(value).strip()) * 100)
         except InvalidOperation:
-            raise ValueError(f"Invalid price value: {value!r}")
+            raise ValueError(f"Invalid price value: {value!r}") from None
 
     def render(self, value, obj=None):
         if value is None:
@@ -59,9 +59,15 @@ class ProductResource(resources.ModelResource):
         model = Product
         # "id" is intentionally omitted — sku is the natural import key.
         fields = (
-            "name", "sku", "barcode", "category", "unit",
-            "cost_price_paise", "sell_price_paise",
-            "low_stock_threshold", "is_active",
+            "name",
+            "sku",
+            "barcode",
+            "category",
+            "unit",
+            "cost_price_paise",
+            "sell_price_paise",
+            "low_stock_threshold",
+            "is_active",
         )
         import_id_fields = ("sku",)
         skip_unchanged = True

@@ -1,12 +1,13 @@
 import io
-import pytest
 from decimal import Decimal
+
+import pytest
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from apps.accounts.models import User
-from apps.catalog.models import Category, Inventory, Product, StockMovement
+from apps.catalog.models import Category, Inventory, Product
 
 
 @pytest.fixture
@@ -17,8 +18,12 @@ def api_client():
 @pytest.fixture
 def user(db):
     return User.objects.create_superuser(
-        username="admin", email="admin@test.com",
-        password="Pass1234!", first_name="Admin", last_name="User", role="owner",
+        username="admin",
+        email="admin@test.com",
+        password="Pass1234!",
+        first_name="Admin",
+        last_name="User",
+        role="owner",
     )
 
 
@@ -52,6 +57,7 @@ def product(category):
 # Categories
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.django_db
 class TestCategoryAPI:
     def test_list_categories(self, auth_client, category):
@@ -75,6 +81,7 @@ class TestCategoryAPI:
 # Products
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.django_db
 class TestProductAPI:
     def test_list_products(self, auth_client, product):
@@ -84,11 +91,17 @@ class TestProductAPI:
         assert "TAP-001" in skus
 
     def test_create_product_creates_inventory(self, auth_client, category):
-        resp = auth_client.post("/api/products/", {
-            "name": "Shower Head", "sku": "SH-001",
-            "category": category.id, "unit": "pcs",
-            "cost_price_paise": 45000, "sell_price_paise": 65000,
-        })
+        resp = auth_client.post(
+            "/api/products/",
+            {
+                "name": "Shower Head",
+                "sku": "SH-001",
+                "category": category.id,
+                "unit": "pcs",
+                "cost_price_paise": 45000,
+                "sell_price_paise": 65000,
+            },
+        )
         assert resp.status_code == status.HTTP_201_CREATED
         assert Inventory.objects.filter(product__sku="SH-001").exists()
 
@@ -117,6 +130,7 @@ class TestProductAPI:
     def test_low_stock_endpoint(self, auth_client, product):
         # Put product below threshold
         from apps.catalog.services import apply_stock_movement
+
         apply_stock_movement(product=product, movement_type="stock_in", qty_change=Decimal("3"))
         resp = auth_client.get("/api/products/low-stock/")
         assert resp.status_code == status.HTTP_200_OK
@@ -125,6 +139,7 @@ class TestProductAPI:
 
     def test_low_stock_excludes_ok_products(self, auth_client, product):
         from apps.catalog.services import apply_stock_movement
+
         apply_stock_movement(product=product, movement_type="stock_in", qty_change=Decimal("100"))
         resp = auth_client.get("/api/products/low-stock/")
         skus = [p["sku"] for p in resp.data]
@@ -135,15 +150,19 @@ class TestProductAPI:
 # Inventory / Stock-in
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.django_db
 class TestInventoryAPI:
     def test_stock_in_creates_movement(self, auth_client, product):
-        resp = auth_client.post("/api/inventory/stock-in/", {
-            "product": product.id,
-            "qty": "50.000",
-            "cost_price_paise": 55000,
-            "reference": "PO-2026-001",
-        })
+        resp = auth_client.post(
+            "/api/inventory/stock-in/",
+            {
+                "product": product.id,
+                "qty": "50.000",
+                "cost_price_paise": 55000,
+                "reference": "PO-2026-001",
+            },
+        )
         assert resp.status_code == status.HTTP_201_CREATED
         assert resp.data["movement_type"] == "stock_in"
         assert Decimal(resp.data["qty_after"]) == Decimal("50")
@@ -166,23 +185,39 @@ class TestInventoryAPI:
 # CSV Import
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.django_db
 class TestCSVImport:
     def _make_csv(self, rows: list[dict]) -> io.BytesIO:
-        headers = "name,sku,barcode,category,unit,cost_price,sell_price,low_stock_threshold,is_active"
-        lines = [headers] + [
-            ",".join(str(r.get(h, "")) for h in headers.split(","))
-            for r in rows
-        ]
+        headers = (
+            "name,sku,barcode,category,unit,cost_price,sell_price,low_stock_threshold,is_active"
+        )
+        lines = [headers] + [",".join(str(r.get(h, "")) for h in headers.split(",")) for r in rows]
         return io.BytesIO("\n".join(lines).encode("utf-8"))
 
     def test_import_creates_products_and_inventory(self, auth_client, category):
-        csv_file = self._make_csv([
-            {"name": "Floor Tile 60x60", "sku": "FT-060", "category": category.name,
-             "unit": "pcs", "cost_price": "180", "sell_price": "250", "is_active": "True"},
-            {"name": "Wall Tile 30x60", "sku": "WT-306", "category": category.name,
-             "unit": "pcs", "cost_price": "150", "sell_price": "210", "is_active": "True"},
-        ])
+        csv_file = self._make_csv(
+            [
+                {
+                    "name": "Floor Tile 60x60",
+                    "sku": "FT-060",
+                    "category": category.name,
+                    "unit": "pcs",
+                    "cost_price": "180",
+                    "sell_price": "250",
+                    "is_active": "True",
+                },
+                {
+                    "name": "Wall Tile 30x60",
+                    "sku": "WT-306",
+                    "category": category.name,
+                    "unit": "pcs",
+                    "cost_price": "150",
+                    "sell_price": "210",
+                    "is_active": "True",
+                },
+            ]
+        )
         resp = auth_client.post(
             "/api/products/import/",
             {"file": csv_file},
@@ -194,20 +229,37 @@ class TestCSVImport:
         assert Inventory.objects.filter(product__sku__in=["FT-060", "WT-306"]).count() == 2
 
     def test_import_converts_rupees_to_paise(self, auth_client, category):
-        csv_file = self._make_csv([
-            {"name": "Test Tile", "sku": "TEST-001", "category": category.name,
-             "unit": "pcs", "cost_price": "250.50", "sell_price": "350.00", "is_active": "True"},
-        ])
+        csv_file = self._make_csv(
+            [
+                {
+                    "name": "Test Tile",
+                    "sku": "TEST-001",
+                    "category": category.name,
+                    "unit": "pcs",
+                    "cost_price": "250.50",
+                    "sell_price": "350.00",
+                    "is_active": "True",
+                },
+            ]
+        )
         auth_client.post("/api/products/import/", {"file": csv_file}, format="multipart")
         product = Product.objects.get(sku="TEST-001")
         assert product.cost_price_paise == 25050
         assert product.sell_price_paise == 35000
 
     def test_import_updates_existing_product(self, auth_client, product):
-        csv_file = self._make_csv([
-            {"name": "Basin Tap Chrome Updated", "sku": product.sku,
-             "unit": "pcs", "cost_price": "600", "sell_price": "900", "is_active": "True"},
-        ])
+        csv_file = self._make_csv(
+            [
+                {
+                    "name": "Basin Tap Chrome Updated",
+                    "sku": product.sku,
+                    "unit": "pcs",
+                    "cost_price": "600",
+                    "sell_price": "900",
+                    "is_active": "True",
+                },
+            ]
+        )
         resp = auth_client.post("/api/products/import/", {"file": csv_file}, format="multipart")
         assert resp.status_code == status.HTTP_200_OK
         product.refresh_from_db()

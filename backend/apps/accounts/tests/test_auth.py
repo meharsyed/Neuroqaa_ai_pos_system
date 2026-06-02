@@ -12,6 +12,7 @@ def api_client():
 @pytest.fixture
 def user(db):
     from apps.accounts.models import User
+
     return User.objects.create_superuser(
         username="admin",
         email="admin@example.com",
@@ -47,14 +48,18 @@ class TestMeEndpoint:
         assert resp.status_code == status.HTTP_401_UNAUTHORIZED
 
     def test_me_returns_user_data(self, api_client, user):
-        login = api_client.post(reverse("auth-login"), {"email": user.email, "password": "StrongPass123!"})
+        login = api_client.post(
+            reverse("auth-login"), {"email": user.email, "password": "StrongPass123!"}
+        )
         api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {login.data['access']}")
         resp = api_client.get(reverse("auth-me"))
         assert resp.status_code == status.HTTP_200_OK
         assert resp.data["email"] == user.email
 
     def test_refresh_token_works(self, api_client, user):
-        login = api_client.post(reverse("auth-login"), {"email": user.email, "password": "StrongPass123!"})
+        login = api_client.post(
+            reverse("auth-login"), {"email": user.email, "password": "StrongPass123!"}
+        )
         resp = api_client.post(reverse("auth-refresh"), {"refresh": login.data["refresh"]})
         assert resp.status_code == status.HTTP_200_OK
         assert "access" in resp.data

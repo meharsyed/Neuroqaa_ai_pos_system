@@ -14,6 +14,7 @@ class Shift(models.Model):
     Placeholder for cashier shift tracking.
     Open/close enforcement is not wired up until Phase 4 — this model just records shift data.
     """
+
     tenant_id = models.IntegerField(default=1, db_index=True)
     cashier = models.ForeignKey(
         settings.AUTH_USER_MODEL,
@@ -52,12 +53,11 @@ class Sale(models.Model):
     customer = models.ForeignKey(
         "customers.Customer",
         on_delete=models.SET_NULL,
-        null=True, blank=True,
+        null=True,
+        blank=True,
         related_name="sales",
     )
-    status = models.CharField(
-        max_length=20, choices=Status.choices, default=Status.COMPLETED
-    )
+    status = models.CharField(max_length=20, choices=Status.choices, default=Status.COMPLETED)
 
     # All monetary values stored as integer paise (1 Rs = 100 paise)
     subtotal_paise = models.BigIntegerField(default=0)

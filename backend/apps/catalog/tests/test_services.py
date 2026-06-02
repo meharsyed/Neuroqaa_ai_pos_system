@@ -1,5 +1,6 @@
-import pytest
 from decimal import Decimal
+
+import pytest
 from django.db import transaction
 
 from apps.catalog.models import Category, Inventory, Product, StockMovement
@@ -47,7 +48,9 @@ class TestApplyStockMovement:
 
     def test_fractional_qty_supported(self, product):
         """Inventory supports kg/litre with 3 decimal places."""
-        apply_stock_movement(product=product, movement_type="stock_in", qty_change=Decimal("15.750"))
+        apply_stock_movement(
+            product=product, movement_type="stock_in", qty_change=Decimal("15.750")
+        )
         product.inventory.refresh_from_db()
         assert product.inventory.stock_qty == Decimal("15.750")
 
@@ -108,7 +111,7 @@ class TestAtomicity:
         initial_qty = product.inventory.stock_qty
         initial_count = StockMovement.objects.filter(product=product).count()
 
-        with pytest.raises(RuntimeError):
+        with pytest.raises(RuntimeError):  # noqa: SIM117
             with transaction.atomic():
                 apply_stock_movement(
                     product=product, movement_type="stock_in", qty_change=Decimal("50")

@@ -1,5 +1,6 @@
-import pytest
 from decimal import Decimal
+
+import pytest
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
@@ -7,11 +8,10 @@ from rest_framework.test import APIClient
 from apps.accounts.models import User
 from apps.catalog.models import Category, Inventory, Product
 from apps.catalog.services import apply_stock_movement
-from apps.sales.models import Sale
 from apps.sales.services import create_sale
 
-
 # ── Fixtures ────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def api_client():
@@ -21,16 +21,22 @@ def api_client():
 @pytest.fixture
 def owner(db):
     return User.objects.create_superuser(
-        username="owner", email="owner@test.com",
-        password="Pass1234!", first_name="Shop", last_name="Owner", role="owner",
+        username="owner",
+        email="owner@test.com",
+        password="Pass1234!",
+        first_name="Shop",
+        last_name="Owner",
+        role="owner",
     )
 
 
 @pytest.fixture
 def cashier(db):
     return User.objects.create_user(
-        username="cashier1", email="cashier@test.com",
-        password="Pass1234!", role="cashier",
+        username="cashier1",
+        email="cashier@test.com",
+        password="Pass1234!",
+        role="cashier",
     )
 
 
@@ -58,8 +64,10 @@ def category(db):
 @pytest.fixture
 def product(category):
     p = Product.objects.create(
-        name="Ceramic Tile 30x30", sku="TILE-001",
-        category=category, sell_price_paise=35000,
+        name="Ceramic Tile 30x30",
+        sku="TILE-001",
+        category=category,
+        sell_price_paise=35000,
         cost_price_paise=25000,
         barcode="8901234567890",
     )
@@ -71,8 +79,10 @@ def product(category):
 @pytest.fixture
 def product2(category):
     p = Product.objects.create(
-        name="Basin Tap", sku="TAP-001",
-        category=category, sell_price_paise=85000,
+        name="Basin Tap",
+        sku="TAP-001",
+        category=category,
+        sell_price_paise=85000,
         cost_price_paise=55000,
     )
     Inventory.objects.create(product=p)
@@ -82,11 +92,14 @@ def product2(category):
 
 # ── Create sale ───────────────────────────────────────────────────────────────
 
+
 @pytest.mark.django_db
 class TestCreateSaleAPI:
     def _payload(self, product, qty="2"):
         return {
-            "items": [{"product_id": product.id, "qty": qty, "unit_price_paise": product.sell_price_paise}],
+            "items": [
+                {"product_id": product.id, "qty": qty, "unit_price_paise": product.sell_price_paise}
+            ],
             "payment_method": "cash",
             "amount_tendered_paise": 200000,
         }
@@ -146,11 +159,13 @@ class TestCreateSaleAPI:
 
 # ── List / Retrieve ────────────────────────────────────────────────────────────
 
+
 @pytest.mark.django_db
 class TestSaleListAPI:
     def test_list_sales(self, cashier_client, cashier, product):
         create_sale(
-            cashier=cashier, items=[{"product_id": product.id, "qty": "1", "unit_price_paise": 35000}],
+            cashier=cashier,
+            items=[{"product_id": product.id, "qty": "1", "unit_price_paise": 35000}],
             amount_tendered_paise=35000,
         )
         resp = cashier_client.get("/api/sales/")
@@ -159,7 +174,8 @@ class TestSaleListAPI:
 
     def test_retrieve_sale(self, cashier_client, cashier, product):
         sale = create_sale(
-            cashier=cashier, items=[{"product_id": product.id, "qty": "1", "unit_price_paise": 35000}],
+            cashier=cashier,
+            items=[{"product_id": product.id, "qty": "1", "unit_price_paise": 35000}],
             amount_tendered_paise=35000,
         )
         resp = cashier_client.get(f"/api/sales/{sale.pk}/")
@@ -169,11 +185,13 @@ class TestSaleListAPI:
 
 # ── Void sale ─────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.django_db
 class TestVoidSaleAPI:
     def test_owner_can_void(self, owner_client, owner, product):
         sale = create_sale(
-            cashier=owner, items=[{"product_id": product.id, "qty": "3", "unit_price_paise": 35000}],
+            cashier=owner,
+            items=[{"product_id": product.id, "qty": "3", "unit_price_paise": 35000}],
             amount_tendered_paise=120000,
         )
         resp = owner_client.post(f"/api/sales/{sale.pk}/void/")
@@ -182,7 +200,8 @@ class TestVoidSaleAPI:
 
     def test_cashier_cannot_void(self, cashier_client, cashier, product):
         sale = create_sale(
-            cashier=cashier, items=[{"product_id": product.id, "qty": "1", "unit_price_paise": 35000}],
+            cashier=cashier,
+            items=[{"product_id": product.id, "qty": "1", "unit_price_paise": 35000}],
             amount_tendered_paise=35000,
         )
         resp = cashier_client.post(f"/api/sales/{sale.pk}/void/")
@@ -190,7 +209,8 @@ class TestVoidSaleAPI:
 
     def test_void_restores_stock(self, owner_client, owner, product):
         sale = create_sale(
-            cashier=owner, items=[{"product_id": product.id, "qty": "5", "unit_price_paise": 35000}],
+            cashier=owner,
+            items=[{"product_id": product.id, "qty": "5", "unit_price_paise": 35000}],
             amount_tendered_paise=200000,
         )
         owner_client.post(f"/api/sales/{sale.pk}/void/")
@@ -199,6 +219,7 @@ class TestVoidSaleAPI:
 
 
 # ── Barcode lookup ────────────────────────────────────────────────────────────
+
 
 @pytest.mark.django_db
 class TestBarcodeLookupAPI:

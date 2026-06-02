@@ -19,22 +19,36 @@ class ProductSerializer(serializers.ModelSerializer):
     sell_price = serializers.SerializerMethodField()
     stock_qty = serializers.DecimalField(
         source="inventory.stock_qty",
-        max_digits=10, decimal_places=3,
-        read_only=True, default=Decimal("0.000"),
+        max_digits=10,
+        decimal_places=3,
+        read_only=True,
+        default=Decimal("0.000"),
     )
-    is_low_stock = serializers.BooleanField(source="inventory.is_low_stock", read_only=True, default=False)
+    is_low_stock = serializers.BooleanField(
+        source="inventory.is_low_stock", read_only=True, default=False
+    )
 
     class Meta:
         model = Product
         fields = [
-            "id", "name", "sku", "barcode",
-            "category", "category_name",
-            "unit", "description",
-            "cost_price_paise", "sell_price_paise",
-            "cost_price", "sell_price",
-            "low_stock_threshold", "is_active",
-            "stock_qty", "is_low_stock",
-            "created_at", "updated_at",
+            "id",
+            "name",
+            "sku",
+            "barcode",
+            "category",
+            "category_name",
+            "unit",
+            "description",
+            "cost_price_paise",
+            "sell_price_paise",
+            "cost_price",
+            "sell_price",
+            "low_stock_threshold",
+            "is_active",
+            "stock_qty",
+            "is_low_stock",
+            "created_at",
+            "updated_at",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
 
@@ -56,7 +70,8 @@ class InventorySerializer(serializers.ModelSerializer):
     unit = serializers.CharField(source="product.unit", read_only=True)
     low_stock_threshold = serializers.DecimalField(
         source="product.low_stock_threshold",
-        max_digits=10, decimal_places=3,
+        max_digits=10,
+        decimal_places=3,
         read_only=True,
     )
     is_low_stock = serializers.BooleanField(read_only=True)
@@ -64,8 +79,15 @@ class InventorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Inventory
         fields = [
-            "id", "product", "sku", "product_name", "unit",
-            "stock_qty", "low_stock_threshold", "is_low_stock", "updated_at",
+            "id",
+            "product",
+            "sku",
+            "product_name",
+            "unit",
+            "stock_qty",
+            "low_stock_threshold",
+            "is_low_stock",
+            "updated_at",
         ]
 
 
@@ -77,10 +99,19 @@ class StockMovementSerializer(serializers.ModelSerializer):
     class Meta:
         model = StockMovement
         fields = [
-            "id", "product", "product_sku", "product_name",
-            "movement_type", "qty_change", "qty_after",
-            "cost_price_paise", "reference", "notes",
-            "created_by", "created_by_name", "created_at",
+            "id",
+            "product",
+            "product_sku",
+            "product_name",
+            "movement_type",
+            "qty_change",
+            "qty_after",
+            "cost_price_paise",
+            "reference",
+            "notes",
+            "created_by",
+            "created_by_name",
+            "created_at",
         ]
         read_only_fields = fields  # append-only: no writes via API
 
@@ -92,6 +123,7 @@ class StockMovementSerializer(serializers.ModelSerializer):
 
 class StockInSerializer(serializers.Serializer):
     """Input serializer for the stock-in action. Validates before hitting services.py."""
+
     product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.filter(is_active=True))
     qty = serializers.DecimalField(max_digits=10, decimal_places=3, min_value=Decimal("0.001"))
     cost_price_paise = serializers.IntegerField(min_value=0, required=False, allow_null=True)

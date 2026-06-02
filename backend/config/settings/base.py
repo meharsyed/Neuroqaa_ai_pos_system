@@ -2,8 +2,10 @@
 Base settings shared across all environments.
 Never import this file directly in manage.py — always use a concrete env file.
 """
+
 from datetime import timedelta
 from pathlib import Path
+
 import environ
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent

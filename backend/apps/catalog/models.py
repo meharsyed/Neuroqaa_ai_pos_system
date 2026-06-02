@@ -79,13 +79,9 @@ class Product(models.Model):
 
 class Inventory(models.Model):
     tenant_id = models.IntegerField(default=1, db_index=True)
-    product = models.OneToOneField(
-        Product, on_delete=models.CASCADE, related_name="inventory"
-    )
+    product = models.OneToOneField(Product, on_delete=models.CASCADE, related_name="inventory")
     # DecimalField supports fractional units (kg, litres); 3 decimal places.
-    stock_qty = models.DecimalField(
-        max_digits=10, decimal_places=3, default=Decimal("0.000")
-    )
+    stock_qty = models.DecimalField(max_digits=10, decimal_places=3, default=Decimal("0.000"))
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -117,9 +113,7 @@ class StockMovement(models.Model):
         DAMAGE = "damage", "Damage"
 
     tenant_id = models.IntegerField(default=1, db_index=True)
-    product = models.ForeignKey(
-        Product, on_delete=models.PROTECT, related_name="movements"
-    )
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="movements")
     movement_type = models.CharField(max_length=20, choices=MovementType.choices)
     qty_change = models.DecimalField(max_digits=10, decimal_places=3)
     qty_after = models.DecimalField(max_digits=10, decimal_places=3)

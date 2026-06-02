@@ -6,15 +6,22 @@ from .models import Customer
 
 
 class CustomerSerializer(serializers.ModelSerializer):
-    display_name        = serializers.CharField(read_only=True)
-    total_sales         = serializers.SerializerMethodField()
+    display_name = serializers.CharField(read_only=True)
+    total_sales = serializers.SerializerMethodField()
     total_revenue_paise = serializers.SerializerMethodField()
 
     class Meta:
-        model  = Customer
+        model = Customer
         fields = [
-            "id", "name", "phone", "gender", "notes",
-            "display_name", "total_sales", "total_revenue_paise", "created_at",
+            "id",
+            "name",
+            "phone",
+            "gender",
+            "notes",
+            "display_name",
+            "total_sales",
+            "total_revenue_paise",
+            "created_at",
         ]
 
     def get_total_sales(self, obj) -> int:

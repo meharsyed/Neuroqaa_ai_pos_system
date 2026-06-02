@@ -3,6 +3,7 @@ Business-intelligence report functions — pure data, no HTTP.
 Each function returns a plain dict/list suitable for JSON serialisation
 or CSV export.
 """
+
 import csv
 import io
 from datetime import date
@@ -143,6 +144,7 @@ def inventory_valuation() -> dict:
 
 # ── CSV helpers ────────────────────────────────────────────────────────────────
 
+
 def daily_summary_csv(data: dict) -> str:
     buf = io.StringIO()
     w = csv.writer(buf)
@@ -157,28 +159,51 @@ def daily_summary_csv(data: dict) -> str:
     w.writerow([])
     w.writerow(["SKU", "Product", "Qty Sold", "Revenue (Rs.)"])
     for p in data["top_products"]:
-        w.writerow([
-            p["product__sku"], p["product__name"],
-            p["qty_sold"], f"{p['revenue_paise'] / 100:.2f}",
-        ])
+        w.writerow(
+            [
+                p["product__sku"],
+                p["product__name"],
+                p["qty_sold"],
+                f"{p['revenue_paise'] / 100:.2f}",
+            ]
+        )
     return buf.getvalue()
 
 
 def inventory_valuation_csv(data: dict) -> str:
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["SKU", "Name", "Stock Qty", "Cost Price (Rs.)", "Sell Price (Rs.)",
-                "Cost Value (Rs.)", "Sell Value (Rs.)"])
+    w.writerow(
+        [
+            "SKU",
+            "Name",
+            "Stock Qty",
+            "Cost Price (Rs.)",
+            "Sell Price (Rs.)",
+            "Cost Value (Rs.)",
+            "Sell Value (Rs.)",
+        ]
+    )
     for p in data["products"]:
-        w.writerow([
-            p["sku"], p["name"], p["stock_qty"],
-            f"{p['cost_price_paise'] / 100:.2f}",
-            f"{p['sell_price_paise'] / 100:.2f}",
-            f"{p['cost_value_paise'] / 100:.2f}",
-            f"{p['sell_value_paise'] / 100:.2f}",
-        ])
+        w.writerow(
+            [
+                p["sku"],
+                p["name"],
+                p["stock_qty"],
+                f"{p['cost_price_paise'] / 100:.2f}",
+                f"{p['sell_price_paise'] / 100:.2f}",
+                f"{p['cost_value_paise'] / 100:.2f}",
+                f"{p['sell_value_paise'] / 100:.2f}",
+            ]
+        )
     w.writerow([])
-    w.writerow(["", "TOTAL", "",
-                f"{data['total_cost_value_paise'] / 100:.2f}",
-                f"{data['total_sell_value_paise'] / 100:.2f}"])
+    w.writerow(
+        [
+            "",
+            "TOTAL",
+            "",
+            f"{data['total_cost_value_paise'] / 100:.2f}",
+            f"{data['total_sell_value_paise'] / 100:.2f}",
+        ]
+    )
     return buf.getvalue()

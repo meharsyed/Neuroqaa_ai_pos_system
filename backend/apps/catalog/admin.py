@@ -19,12 +19,16 @@ class ProductAdminForm(forms.ModelForm):
     """
 
     cost_price_rs = forms.DecimalField(
-        max_digits=10, decimal_places=2, min_value=Decimal("0"),
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal("0"),
         label="Cost Price (Rs.)",
         help_text="Price you paid per unit. e.g. 250.00",
     )
     sell_price_rs = forms.DecimalField(
-        max_digits=10, decimal_places=2, min_value=Decimal("0"),
+        max_digits=10,
+        decimal_places=2,
+        min_value=Decimal("0"),
         label="Sell Price (Rs.)",
         help_text="Price charged to customer. e.g. 380.00",
     )
@@ -62,8 +66,13 @@ class ProductAdmin(ImportExportModelAdmin):
     form = ProductAdminForm
     resource_classes = [ProductResource]
     list_display = [
-        "sku", "name", "category", "unit",
-        "display_cost", "display_sell", "display_margin",
+        "sku",
+        "name",
+        "category",
+        "unit",
+        "display_cost",
+        "display_sell",
+        "display_margin",
         "is_active",
     ]
     list_filter = ["category", "unit", "is_active"]
@@ -71,7 +80,10 @@ class ProductAdmin(ImportExportModelAdmin):
     list_select_related = ["category"]
     readonly_fields = ["created_at", "updated_at"]
     fieldsets = [
-        (None, {"fields": ["name", "sku", "barcode", "category", "unit", "description", "is_active"]}),
+        (
+            None,
+            {"fields": ["name", "sku", "barcode", "category", "unit", "description", "is_active"]},
+        ),
         ("Pricing", {"fields": ["cost_price_rs", "sell_price_rs"]}),
         ("Inventory", {"fields": ["low_stock_threshold"]}),
         ("Timestamps", {"fields": ["created_at", "updated_at"], "classes": ["collapse"]}),
@@ -79,10 +91,12 @@ class ProductAdmin(ImportExportModelAdmin):
 
     def display_cost(self, obj):
         return str(Money(obj.cost_price_paise))
+
     display_cost.short_description = "Cost Price"
 
     def display_sell(self, obj):
         return str(Money(obj.sell_price_paise))
+
     display_sell.short_description = "Sell Price"
 
     def display_margin(self, obj):
@@ -93,6 +107,7 @@ class ProductAdmin(ImportExportModelAdmin):
             color,
             str(Money(margin)),
         )
+
     display_margin.short_description = "Margin"
 
 
@@ -107,6 +122,7 @@ class InventoryAdmin(admin.ModelAdmin):
         if obj.is_low_stock:
             return format_html('<span style="color:red;font-weight:bold;">⚠ Low Stock</span>')
         return format_html('<span style="color:green;">OK</span>')
+
     display_level.short_description = "Level"
 
     def has_add_permission(self, request):
@@ -119,8 +135,13 @@ class InventoryAdmin(admin.ModelAdmin):
 @admin.register(StockMovement)
 class StockMovementAdmin(admin.ModelAdmin):
     list_display = [
-        "product", "movement_type", "qty_change", "qty_after",
-        "reference", "created_by", "created_at",
+        "product",
+        "movement_type",
+        "qty_change",
+        "qty_after",
+        "reference",
+        "created_by",
+        "created_at",
     ]
     list_filter = ["movement_type", "created_at"]
     search_fields = ["product__sku", "product__name", "reference"]

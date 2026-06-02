@@ -1,6 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from simple_history.admin import SimpleHistoryAdmin
+
 from .models import User
 
 
@@ -11,9 +12,7 @@ class UserAdmin(BaseUserAdmin, SimpleHistoryAdmin):
     search_fields = ["email", "first_name", "last_name", "username"]
     ordering = ["-created_at"]
 
-    fieldsets = BaseUserAdmin.fieldsets + (
-        ("POS Profile", {"fields": ("role", "phone")}),
-    )
+    fieldsets = BaseUserAdmin.fieldsets + (("POS Profile", {"fields": ("role", "phone")}),)
     add_fieldsets = BaseUserAdmin.add_fieldsets + (
         ("POS Profile", {"fields": ("email", "role", "phone")}),
     )

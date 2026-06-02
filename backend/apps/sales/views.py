@@ -1,4 +1,3 @@
-import csv
 from datetime import date
 
 import django_filters
@@ -29,20 +28,21 @@ from .serializers import (
 )
 from .services import close_shift, create_sale, get_shift_reconciliation, open_shift, void_sale
 
-
 # ── Date-range filter for sales list ─────────────────────────────────────────
+
 
 class SaleFilter(django_filters.FilterSet):
     date_from = django_filters.DateFilter(field_name="created_at", lookup_expr="date__gte")
-    date_to   = django_filters.DateFilter(field_name="created_at", lookup_expr="date__lte")
-    customer  = django_filters.NumberFilter(field_name="customer__id")
+    date_to = django_filters.DateFilter(field_name="created_at", lookup_expr="date__lte")
+    customer = django_filters.NumberFilter(field_name="customer__id")
 
     class Meta:
-        model  = Sale
+        model = Sale
         fields = ["status", "cashier"]
 
 
 # ── Sale ──────────────────────────────────────────────────────────────────────
+
 
 class SaleViewSet(
     mixins.CreateModelMixin,
@@ -51,8 +51,7 @@ class SaleViewSet(
     viewsets.GenericViewSet,
 ):
     queryset = (
-        Sale.objects
-        .select_related("cashier", "payment", "voided_by", "customer")
+        Sale.objects.select_related("cashier", "payment", "voided_by", "customer")
         .prefetch_related("items__product")
         .order_by("-created_at")
     )
@@ -91,8 +90,7 @@ class SaleViewSet(
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         sale_data = (
-            Sale.objects
-            .select_related("cashier", "payment", "voided_by", "customer")
+            Sale.objects.select_related("cashier", "payment", "voided_by", "customer")
             .prefetch_related("items__product")
             .get(pk=sale.pk)
         )
@@ -116,8 +114,7 @@ class SaleViewSet(
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         sale_data = (
-            Sale.objects
-            .select_related("cashier", "payment", "voided_by", "customer")
+            Sale.objects.select_related("cashier", "payment", "voided_by", "customer")
             .prefetch_related("items__product")
             .get(pk=sale.pk)
         )
@@ -148,9 +145,7 @@ class SaleViewSet(
             return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
-        response["Content-Disposition"] = (
-            f'inline; filename="receipt-{sale.sale_number}.pdf"'
-        )
+        response["Content-Disposition"] = f'inline; filename="receipt-{sale.sale_number}.pdf"'
         return response
 
     @extend_schema(summary="Send receipt to thermal printer over network")
@@ -169,6 +164,7 @@ class SaleViewSet(
 
 
 # ── Shift ─────────────────────────────────────────────────────────────────────
+
 
 class ShiftViewSet(
     mixins.CreateModelMixin,
@@ -250,6 +246,7 @@ class ShiftViewSet(
 
 
 # ── Reports ───────────────────────────────────────────────────────────────────
+
 
 @extend_schema(summary="Daily revenue summary")
 @api_view(["GET"])

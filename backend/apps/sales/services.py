@@ -101,8 +101,7 @@ def create_sale(
             if available < required:
                 product = inventories[pid].product
                 raise ValueError(
-                    f"Insufficient stock for {product.sku}: "
-                    f"need {required}, have {available}."
+                    f"Insufficient stock for {product.sku}: " f"need {required}, have {available}."
                 )
 
         # Compute line totals and overall subtotal
@@ -176,6 +175,7 @@ def create_sale(
 
 
 # ── Shift services ─────────────────────────────────────────────────────────────
+
 
 def open_shift(*, cashier, opening_float_paise: int = 0, notes: str = "") -> Shift:
     """Open a new shift for the cashier. No validation on concurrent open shifts."""

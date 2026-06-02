@@ -1,29 +1,34 @@
-import pytest
 from decimal import Decimal
+
+import pytest
 from django.db import transaction
 
 from apps.accounts.models import User
 from apps.catalog.models import Category, Inventory, Product, StockMovement
 from apps.catalog.services import apply_stock_movement
-from apps.sales.models import Payment, Sale, SaleItem
+from apps.sales.models import Sale, SaleItem
 from apps.sales.services import create_sale, void_sale
 
-
 # ── Fixtures ────────────────────────────────────────────────────────────────
+
 
 @pytest.fixture
 def cashier(db):
     return User.objects.create_user(
-        username="cashier1", email="cashier@test.com",
-        password="Pass1234!", role="cashier",
+        username="cashier1",
+        email="cashier@test.com",
+        password="Pass1234!",
+        role="cashier",
     )
 
 
 @pytest.fixture
 def owner(db):
     return User.objects.create_user(
-        username="owner1", email="owner@test.com",
-        password="Pass1234!", role="owner",
+        username="owner1",
+        email="owner@test.com",
+        password="Pass1234!",
+        role="owner",
     )
 
 
@@ -35,8 +40,10 @@ def category(db):
 @pytest.fixture
 def product(category):
     p = Product.objects.create(
-        name="Ceramic Tile 30x30", sku="TILE-001",
-        category=category, sell_price_paise=35000,
+        name="Ceramic Tile 30x30",
+        sku="TILE-001",
+        category=category,
+        sell_price_paise=35000,
         cost_price_paise=25000,
     )
     Inventory.objects.create(product=p)
@@ -47,8 +54,10 @@ def product(category):
 @pytest.fixture
 def product2(category):
     p = Product.objects.create(
-        name="Basin Tap", sku="TAP-001",
-        category=category, sell_price_paise=85000,
+        name="Basin Tap",
+        sku="TAP-001",
+        category=category,
+        sell_price_paise=85000,
         cost_price_paise=55000,
     )
     Inventory.objects.create(product=p)
@@ -57,14 +66,17 @@ def product2(category):
 
 
 def _sale_items(product, qty="2", price=None):
-    return [{
-        "product_id": product.id,
-        "qty": qty,
-        "unit_price_paise": price or product.sell_price_paise,
-    }]
+    return [
+        {
+            "product_id": product.id,
+            "qty": qty,
+            "unit_price_paise": price or product.sell_price_paise,
+        }
+    ]
 
 
 # ── Happy path ───────────────────────────────────────────────────────────────
+
 
 @pytest.mark.django_db
 class TestCreateSale:
@@ -82,7 +94,8 @@ class TestCreateSale:
 
     def test_sale_number_is_readable(self, cashier, product):
         sale = create_sale(
-            cashier=cashier, items=_sale_items(product),
+            cashier=cashier,
+            items=_sale_items(product),
             amount_tendered_paise=100000,
         )
         assert sale.sale_number.startswith("SALE-")
@@ -90,7 +103,8 @@ class TestCreateSale:
 
     def test_stock_is_decremented(self, cashier, product):
         create_sale(
-            cashier=cashier, items=_sale_items(product, qty="5"),
+            cashier=cashier,
+            items=_sale_items(product, qty="5"),
             amount_tendered_paise=200000,
         )
         product.inventory.refresh_from_db()
@@ -98,18 +112,20 @@ class TestCreateSale:
 
     def test_stock_movement_type_is_sale(self, cashier, product):
         sale = create_sale(
-            cashier=cashier, items=_sale_items(product, qty="2"),
+            cashier=cashier,
+            items=_sale_items(product, qty="2"),
             amount_tendered_paise=100000,
         )
-        movement = StockMovement.objects.filter(
-            product=product, movement_type="sale"
-        ).latest("created_at")
+        movement = StockMovement.objects.filter(product=product, movement_type="sale").latest(
+            "created_at"
+        )
         assert movement.qty_change == Decimal("-2")
         assert movement.reference == sale.sale_number
 
     def test_payment_change_calculated_correctly(self, cashier, product):
         sale = create_sale(
-            cashier=cashier, items=_sale_items(product, qty="1"),
+            cashier=cashier,
+            items=_sale_items(product, qty="1"),
             payment_method="cash",
             amount_tendered_paise=40000,  # Rs.400 tendered for Rs.350 sale
         )
@@ -117,7 +133,8 @@ class TestCreateSale:
 
     def test_sale_level_discount_applied(self, cashier, product):
         sale = create_sale(
-            cashier=cashier, items=_sale_items(product, qty="1"),
+            cashier=cashier,
+            items=_sale_items(product, qty="1"),
             payment_method="cash",
             amount_tendered_paise=35000,
             discount_paise=5000,  # Rs.50 off
@@ -132,7 +149,8 @@ class TestCreateSale:
             {"product_id": product2.id, "qty": "1", "unit_price_paise": 85000},
         ]
         sale = create_sale(
-            cashier=cashier, items=items,
+            cashier=cashier,
+            items=items,
             amount_tendered_paise=200000,
         )
         assert sale.total_paise == 2 * 35000 + 85000
@@ -140,7 +158,8 @@ class TestCreateSale:
 
     def test_creates_payment_record(self, cashier, product):
         sale = create_sale(
-            cashier=cashier, items=_sale_items(product),
+            cashier=cashier,
+            items=_sale_items(product),
             payment_method="card",
             amount_tendered_paise=35000,
         )
@@ -149,7 +168,8 @@ class TestCreateSale:
 
     def test_sale_item_subtotal_correct(self, cashier, product):
         sale = create_sale(
-            cashier=cashier, items=_sale_items(product, qty="3"),
+            cashier=cashier,
+            items=_sale_items(product, qty="3"),
             amount_tendered_paise=120000,
         )
         item = sale.items.get()
@@ -157,6 +177,7 @@ class TestCreateSale:
 
 
 # ── Oversell guard ────────────────────────────────────────────────────────────
+
 
 @pytest.mark.django_db
 class TestOversellGuard:
@@ -196,6 +217,7 @@ class TestOversellGuard:
 
 # ── Atomicity ─────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.django_db
 class TestSaleAtomicity:
     def test_full_rollback_on_simulated_crash(self, cashier, product):
@@ -203,10 +225,11 @@ class TestSaleAtomicity:
         initial_qty = product.inventory.stock_qty
         initial_sale_count = Sale.objects.count()
 
-        with pytest.raises(RuntimeError):
+        with pytest.raises(RuntimeError):  # noqa: SIM117
             with transaction.atomic():
                 create_sale(
-                    cashier=cashier, items=_sale_items(product, qty="5"),
+                    cashier=cashier,
+                    items=_sale_items(product, qty="5"),
                     amount_tendered_paise=200000,
                 )
                 raise RuntimeError("Simulated crash after create_sale")
@@ -218,11 +241,13 @@ class TestSaleAtomicity:
 
 # ── Void sale ─────────────────────────────────────────────────────────────────
 
+
 @pytest.mark.django_db
 class TestVoidSale:
     def test_void_restores_stock(self, cashier, owner, product):
         sale = create_sale(
-            cashier=cashier, items=_sale_items(product, qty="5"),
+            cashier=cashier,
+            items=_sale_items(product, qty="5"),
             amount_tendered_paise=200000,
         )
         product.inventory.refresh_from_db()
@@ -235,7 +260,8 @@ class TestVoidSale:
 
     def test_void_changes_status(self, cashier, owner, product):
         sale = create_sale(
-            cashier=cashier, items=_sale_items(product),
+            cashier=cashier,
+            items=_sale_items(product),
             amount_tendered_paise=100000,
         )
         void_sale(sale=sale, voided_by=owner)
@@ -246,7 +272,8 @@ class TestVoidSale:
 
     def test_void_creates_return_movements(self, cashier, owner, product):
         sale = create_sale(
-            cashier=cashier, items=_sale_items(product, qty="3"),
+            cashier=cashier,
+            items=_sale_items(product, qty="3"),
             amount_tendered_paise=120000,
         )
         void_sale(sale=sale, voided_by=owner)
@@ -259,7 +286,8 @@ class TestVoidSale:
 
     def test_void_already_voided_raises(self, cashier, owner, product):
         sale = create_sale(
-            cashier=cashier, items=_sale_items(product),
+            cashier=cashier,
+            items=_sale_items(product),
             amount_tendered_paise=100000,
         )
         void_sale(sale=sale, voided_by=owner)

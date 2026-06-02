@@ -21,27 +21,46 @@ class SaleItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = SaleItem
         fields = [
-            "id", "product", "product_sku", "product_name", "product_unit",
-            "qty", "unit_price_paise", "discount_paise", "subtotal_paise",
+            "id",
+            "product",
+            "product_sku",
+            "product_name",
+            "product_unit",
+            "qty",
+            "unit_price_paise",
+            "discount_paise",
+            "subtotal_paise",
         ]
 
 
 class SaleSerializer(serializers.ModelSerializer):
-    items         = SaleItemSerializer(many=True, read_only=True)
-    payment       = PaymentSerializer(read_only=True)
-    cashier_name  = serializers.SerializerMethodField()
+    items = SaleItemSerializer(many=True, read_only=True)
+    payment = PaymentSerializer(read_only=True)
+    cashier_name = serializers.SerializerMethodField()
     customer_name = serializers.SerializerMethodField()
     customer_phone = serializers.SerializerMethodField()
 
     class Meta:
         model = Sale
         fields = [
-            "id", "sale_number", "status",
-            "cashier", "cashier_name",
-            "customer", "customer_name", "customer_phone",
-            "subtotal_paise", "discount_paise", "tax_paise", "total_paise",
-            "notes", "items", "payment",
-            "voided_by", "voided_at", "created_at",
+            "id",
+            "sale_number",
+            "status",
+            "cashier",
+            "cashier_name",
+            "customer",
+            "customer_name",
+            "customer_phone",
+            "subtotal_paise",
+            "discount_paise",
+            "tax_paise",
+            "total_paise",
+            "notes",
+            "items",
+            "payment",
+            "voided_by",
+            "voided_at",
+            "created_at",
         ]
 
     def get_cashier_name(self, obj) -> str:
@@ -65,9 +84,7 @@ class SaleItemInputSerializer(serializers.Serializer):
 
     def validate_product_id(self, value):
         if not Product.objects.filter(pk=value, is_active=True).exists():
-            raise serializers.ValidationError(
-                f"Product {value} does not exist or is inactive."
-            )
+            raise serializers.ValidationError(f"Product {value} does not exist or is inactive.")
         return value
 
 
@@ -88,6 +105,7 @@ class CreateSaleSerializer(serializers.Serializer):
 
 # ── Shift serializers ──────────────────────────────────────────────────────────
 
+
 class ShiftSerializer(serializers.ModelSerializer):
     cashier_name = serializers.SerializerMethodField()
     is_open = serializers.SerializerMethodField()
@@ -95,10 +113,16 @@ class ShiftSerializer(serializers.ModelSerializer):
     class Meta:
         model = Shift
         fields = [
-            "id", "cashier", "cashier_name",
-            "opened_at", "closed_at",
-            "opening_float_paise", "closing_cash_paise", "closing_notes",
-            "notes", "is_open",
+            "id",
+            "cashier",
+            "cashier_name",
+            "opened_at",
+            "closed_at",
+            "opening_float_paise",
+            "closing_cash_paise",
+            "closing_notes",
+            "notes",
+            "is_open",
         ]
 
     def get_cashier_name(self, obj) -> str:

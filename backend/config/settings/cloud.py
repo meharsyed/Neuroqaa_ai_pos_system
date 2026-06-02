@@ -2,17 +2,17 @@
 Cloud / production settings — Postgres, strict security, Sentry.
 Run with: DJANGO_SETTINGS_MODULE=config.settings.cloud
 """
-from .base import *  # noqa: F401, F403
+
 import environ
+
+from .base import *  # noqa: F401, F403
 
 env = environ.Env()
 environ.Env.read_env(BASE_DIR / ".env")  # noqa: F405
 
 DEBUG = False
 
-DATABASES = {
-    "default": env.db("DATABASE_URL")
-}
+DATABASES = {"default": env.db("DATABASE_URL")}
 
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
 
@@ -23,7 +23,8 @@ SECURE_HSTS_PRELOAD = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 
-import sentry_sdk
+import sentry_sdk  # noqa: E402
+
 sentry_sdk.init(
     dsn=env("SENTRY_DSN", default=""),
     traces_sample_rate=0.2,

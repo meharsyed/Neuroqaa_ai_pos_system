@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework.routers import DefaultRouter
 
-from .views import ShiftViewSet, SaleViewSet, report_daily, report_date_range, report_inventory
+from .views import SaleViewSet, ShiftViewSet, report_daily, report_date_range, report_inventory
 
 router = DefaultRouter()
 router.register("sales", SaleViewSet, basename="sale")

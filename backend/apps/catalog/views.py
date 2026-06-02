@@ -50,8 +50,22 @@ class ProductViewSet(viewsets.ModelViewSet):
 
     @extend_schema(
         summary="Bulk import products from CSV",
-        request={"multipart/form-data": {"type": "object", "properties": {"file": {"type": "string", "format": "binary"}}}},
-        responses={200: {"type": "object", "properties": {"imported": {"type": "integer"}, "updated": {"type": "integer"}, "skipped": {"type": "integer"}}}},
+        request={
+            "multipart/form-data": {
+                "type": "object",
+                "properties": {"file": {"type": "string", "format": "binary"}},
+            }
+        },
+        responses={
+            200: {
+                "type": "object",
+                "properties": {
+                    "imported": {"type": "integer"},
+                    "updated": {"type": "integer"},
+                    "skipped": {"type": "integer"},
+                },
+            }
+        },
     )
     @action(detail=False, methods=["post"], url_path="import", parser_classes=[MultiPartParser])
     def import_csv(self, request):
@@ -69,7 +83,9 @@ class ProductViewSet(viewsets.ModelViewSet):
             content = file.read().decode("utf-8-sig")  # handles Excel BOM
             dataset = tablib.Dataset().load(content, headers=True)
         except Exception as exc:
-            return Response({"detail": f"Could not parse file: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
+            return Response(
+                {"detail": f"Could not parse file: {exc}"}, status=status.HTTP_400_BAD_REQUEST
+            )
 
         resource = ProductResource()
 
@@ -89,11 +105,13 @@ class ProductViewSet(viewsets.ModelViewSet):
 
         # Real import
         result = resource.import_data(dataset, dry_run=False, raise_errors=True)
-        return Response({
-            "imported": result.totals.get("new", 0),
-            "updated": result.totals.get("update", 0),
-            "skipped": result.totals.get("skip", 0),
-        })
+        return Response(
+            {
+                "imported": result.totals.get("new", 0),
+                "updated": result.totals.get("update", 0),
+                "skipped": result.totals.get("skip", 0),
+            }
+        )
 
     @extend_schema(summary="Look up an active product by barcode (used by checkout scanner)")
     @action(detail=False, methods=["get"], url_path=r"barcode/(?P<barcode>[^/.]+)")
@@ -134,7 +152,9 @@ class InventoryViewSet(
     mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,
 ):
-    queryset = Inventory.objects.select_related("product", "product__category").order_by("product__name")
+    queryset = Inventory.objects.select_related("product", "product__category").order_by(
+        "product__name"
+    )
     serializer_class = InventorySerializer
     filter_backends = [SearchFilter, OrderingFilter]
     search_fields = ["product__sku", "product__name"]

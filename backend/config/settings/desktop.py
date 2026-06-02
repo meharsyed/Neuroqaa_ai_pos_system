@@ -2,9 +2,12 @@
 Desktop (Tauri) settings — SQLite, no network dependencies, offline-first.
 Run with: DJANGO_SETTINGS_MODULE=config.settings.desktop
 """
-from .base import *  # noqa: F401, F403
-import environ
+
 from pathlib import Path
+
+import environ
+
+from .base import *  # noqa: F401, F403
 
 env = environ.Env()
 # Load .env if present — for local dev. Tauri sets env vars directly at runtime.
@@ -40,5 +43,5 @@ else:
 SIMPLE_JWT = {
     **SIMPLE_JWT,  # noqa: F405
     "ACCESS_TOKEN_LIFETIME": timedelta(hours=8),  # noqa: F405
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=30),
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=30),  # noqa: F405
 }

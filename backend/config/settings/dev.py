@@ -2,8 +2,10 @@
 Development settings — Postgres via docker-compose, debug toolbar, relaxed CORS.
 Run with: DJANGO_SETTINGS_MODULE=config.settings.dev
 """
-from .base import *  # noqa: F401, F403
+
 import environ
+
+from .base import *  # noqa: F401, F403
 
 env = environ.Env()
 environ.Env.read_env(BASE_DIR / ".env")  # noqa: F405
