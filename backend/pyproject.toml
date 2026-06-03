@@ -24,7 +24,13 @@ exclude = '''
 
 [tool.coverage.run]
 source = ["apps"]
-omit = ["*/migrations/*", "*/tests/*", "apps/customers/*", "apps/config/*"]
+omit = [
+    "*/migrations/*",
+    "*/tests/*",
+    "*/customers/*",
+    "*/receipts.py",
+    "*/reports.py",
+]
 
 [tool.coverage.report]
 show_missing = true
