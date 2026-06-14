@@ -1,4 +1,14 @@
 import { useState } from "react";
+
+/** Format stock quantity: whole-number units show as integers; continuous units keep meaningful decimals. */
+function fmtQty(qty: string, unit: string): string {
+  const n = parseFloat(qty);
+  if (isNaN(n)) return qty;
+  const discrete = ["pcs", "box", "dozen", "bundle"];
+  if (discrete.includes(unit.toLowerCase())) return Math.round(n).toLocaleString();
+  // Strip trailing zeros up to 3 decimal places
+  return parseFloat(n.toFixed(3)).toString();
+}
 import { useQuery } from "@tanstack/react-query";
 import { Search, Plus, Upload, PackageX, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -199,7 +209,7 @@ export default function ProductsPage() {
                 <td className="px-4 py-3 text-right tabular-nums">{product.sell_price}</td>
                 <td className="px-4 py-3 text-right tabular-nums">
                   <span className={product.is_low_stock ? "text-amber-600 font-semibold" : ""}>
-                    {product.stock_qty}
+                    {fmtQty(product.stock_qty, product.unit)}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-center">

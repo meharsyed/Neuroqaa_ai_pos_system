@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -34,6 +35,15 @@ export function StockInModal({ open, onOpenChange, product }: Props) {
     resolver: zodResolver(schema),
     defaultValues: { qty: "", cost_price: "", reference: "", notes: "" },
   });
+
+  // Auto-generate a date-based reference each time the modal opens (e.g. RCPT-20260603)
+  useEffect(() => {
+    if (open) {
+      const d = new Date();
+      const ref = `RCPT-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+      reset({ qty: "", cost_price: "", reference: ref, notes: "" });
+    }
+  }, [open, reset]);
 
   const mutation = useMutation({
     mutationFn: (values: FormValues) => {

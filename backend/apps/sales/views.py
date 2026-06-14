@@ -13,6 +13,8 @@ from rest_framework.response import Response
 from .models import Sale, Shift
 from .receipts import print_receipt_network, render_pdf_receipt, render_text_receipt
 from .reports import (
+    audit_report,
+    audit_report_pdf,
     daily_summary,
     daily_summary_csv,
     date_range_summary,
@@ -21,12 +23,13 @@ from .reports import (
 )
 from .serializers import (
     CloseShiftSerializer,
+    CreateReturnSerializer,
     CreateSaleSerializer,
     OpenShiftSerializer,
     SaleSerializer,
     ShiftSerializer,
 )
-from .services import close_shift, create_sale, get_shift_reconciliation, open_shift, void_sale
+from .services import close_shift, create_return, create_sale, get_shift_reconciliation, open_shift, void_sale
 
 # ── Date-range filter for sales list ─────────────────────────────────────────
 
@@ -83,6 +86,7 @@ class SaleViewSet(
                 payment_method=d["payment_method"],
                 amount_tendered_paise=d["amount_tendered_paise"],
                 discount_paise=d.get("discount_paise", 0),
+                tax_paise=d.get("tax_paise", 0),
                 notes=d.get("notes", ""),
                 customer_id=d.get("customer_id"),
             )
@@ -119,6 +123,31 @@ class SaleViewSet(
             .get(pk=sale.pk)
         )
         return Response(SaleSerializer(sale_data).data)
+
+    @extend_schema(summary="Process a partial or full return against a completed sale")
+    @action(detail=True, methods=["post"], url_path="return")
+    def process_return(self, request, pk=None):
+        original_sale = self.get_object()
+        serializer = CreateReturnSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        d = serializer.validated_data
+        try:
+            return_sale = create_return(
+                cashier=request.user,
+                original_sale=original_sale,
+                items=[dict(i) for i in d["items"]],
+                notes=d.get("notes", ""),
+            )
+        except ValueError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+
+        return_data = (
+            Sale.objects
+            .select_related("cashier", "payment", "voided_by", "customer")
+            .prefetch_related("items__product")
+            .get(pk=return_sale.pk)
+        )
+        return Response(SaleSerializer(return_data).data, status=status.HTTP_201_CREATED)
 
     @extend_schema(summary="Plain-text receipt (ESC/POS-compatible)")
     @action(detail=True, methods=["get"], url_path="receipt/text")
@@ -289,6 +318,51 @@ def report_date_range(request):
             {"detail": "end must be on or after start."}, status=status.HTTP_400_BAD_REQUEST
         )
     return Response(date_range_summary(start, end))
+
+
+@extend_schema(summary="Audit / closing report — owner/manager only")
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def report_audit(request):
+    from apps.config.utils import get_setting
+
+    if request.user.role not in ("owner", "manager"):
+        return Response(
+            {"detail": "Only owner or manager can access the audit report."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    start_str = request.query_params.get("start", date.today().replace(day=1).isoformat())
+    end_str = request.query_params.get("end", date.today().isoformat())
+
+    try:
+        start = date.fromisoformat(start_str)
+        end = date.fromisoformat(end_str)
+    except ValueError:
+        return Response({"detail": "Invalid date. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST)
+
+    if end < start:
+        return Response({"detail": "end must be on or after start."}, status=status.HTTP_400_BAD_REQUEST)
+
+    data = audit_report(start, end)
+
+    if request.query_params.get("export") == "pdf":
+        try:
+            pdf_bytes = audit_report_pdf(
+                data,
+                shop_name=get_setting("shop_name", "POS"),
+                shop_address=get_setting("shop_address", ""),
+                shop_phone=get_setting("shop_phone", ""),
+            )
+        except RuntimeError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+
+        fname = f"audit-{start_str}-to-{end_str}.pdf"
+        resp = HttpResponse(pdf_bytes, content_type="application/pdf")
+        resp["Content-Disposition"] = f'attachment; filename="{fname}"'
+        return resp
+
+    return Response(data)
 
 
 @extend_schema(summary="Current inventory valuation")

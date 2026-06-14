@@ -67,6 +67,36 @@ export interface DateRangeSummary {
   }>;
 }
 
+export interface AuditReport {
+  period_start: string;
+  period_end: string;
+  generated_at: string;
+  transaction_count: number;
+  total_revenue_paise: number;
+  total_subtotal_paise: number;
+  total_discount_paise: number;
+  total_tax_paise: number;
+  total_cogs_paise: number;
+  gross_profit_paise: number;
+  gross_margin_pct: number;
+  payment_breakdown: Record<string, { count: number; total_paise: number }>;
+  daily_breakdown: Array<{
+    date: string;
+    count: number;
+    revenue_paise: number;
+    discount_paise: number;
+  }>;
+  top_products: Array<{
+    sku: string;
+    name: string;
+    qty_sold: string;
+    revenue_paise: number;
+    cogs_paise: number;
+    gross_profit_paise: number;
+    gross_margin_pct: number;
+  }>;
+}
+
 export interface InventoryValuation {
   products: Array<{
     sku: string;

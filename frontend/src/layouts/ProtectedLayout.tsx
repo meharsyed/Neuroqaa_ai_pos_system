@@ -11,6 +11,9 @@ import {
   Zap,
   Receipt,
   Users,
+  RotateCcw,
+  ShieldCheck,
+  FileBarChart,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { catalogApi } from "@/lib/catalog";
@@ -25,15 +28,18 @@ const NAV_SECTIONS = [
       { to: "/products",  label: "Products",  icon: Package, badgeKey: "lowStock" },
       { to: "/checkout",  label: "Checkout",  icon: ShoppingCart },
       { to: "/bills",     label: "Bills",     icon: Receipt },
+      { to: "/returns",   label: "Returns",   icon: RotateCcw },
     ],
   },
   {
     label: "Management",
     items: [
-      { to: "/customers", label: "Customers", icon: Users },
-      { to: "/reports",   label: "Reports",   icon: BarChart3 },
-      { to: "/shifts",    label: "Shifts",    icon: Clock },
-      { to: "/settings",  label: "Settings",  icon: Settings },
+      { to: "/customers", label: "Customers",    icon: Users },
+      { to: "/reports",   label: "Reports",      icon: BarChart3 },
+      { to: "/audit",     label: "Audit",        icon: FileBarChart },
+      { to: "/shifts",    label: "Shifts",       icon: Clock },
+      { to: "/activity",  label: "Activity Log", icon: ShieldCheck },
+      { to: "/settings",  label: "Settings",     icon: Settings },
     ],
   },
 ];

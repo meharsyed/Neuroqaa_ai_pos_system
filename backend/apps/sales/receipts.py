@@ -377,7 +377,7 @@ def render_pdf_receipt(sale) -> bytes:
 
     # ── Developer / system branding ───────────────────────────────────────
     story.append(hr(thickness=0.3, color=lgray, before=4, after=6))
-    story.append(Paragraph("Powered by Neuroqaa POS", s_devbold))
+    story.append(Paragraph("Powered by Neuroqaa.ai POS", s_devbold))
     story.append(Paragraph("Neuroqaa.ai Pvt. Ltd. &mdash; Modern POS for Modern Businesses", s_dev))
     story.append(Paragraph("Sales &amp; Support: 0333-1445252", s_dev))
     story.append(Paragraph("www.neuroqaa.ai", s_dev))

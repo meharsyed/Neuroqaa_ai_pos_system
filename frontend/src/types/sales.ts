@@ -12,6 +12,7 @@ export interface CreateSalePayload {
   payment_method: PaymentMethod;
   amount_tendered_paise: number;
   discount_paise?: number;
+  tax_paise?: number;
   notes?: string;
   customer_id?: number | null;
 }
@@ -37,7 +38,9 @@ export interface PaymentRecord {
 export interface Sale {
   id: number;
   sale_number: string;
+  sale_type: "sale" | "return";
   status: "completed" | "voided";
+  return_of: number | null;
   cashier: number;
   cashier_name: string;
   customer: number | null;

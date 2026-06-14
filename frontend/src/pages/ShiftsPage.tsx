@@ -42,12 +42,20 @@ export default function ShiftsPage() {
   const [closeResult, setCloseResult] = useState<ShiftCloseResult | null>(null);
 
   // Queries
-  const { data: currentShift, isLoading: currentLoading } = useQuery({
+  const {
+    data: currentShiftData,
+    isLoading: currentLoading,
+    isError: shiftNotFound,
+  } = useQuery({
     queryKey: ["shift-current"],
     queryFn: shiftsApi.current,
     retry: false,
     staleTime: 30_000,
   });
+
+  // isError means the API returned 404 (no open shift). React Query keeps stale
+  // data on error, so we must check isError explicitly — not just the data value.
+  const currentShift = shiftNotFound ? undefined : currentShiftData;
 
   const { data: shiftList = [], isLoading: listLoading } = useQuery({
     queryKey: ["shifts"],

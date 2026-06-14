@@ -14,6 +14,7 @@ import PaymentModal from "@/components/checkout/PaymentModal";
 import { catalogApi, paiseToRupees } from "@/lib/catalog";
 import { salesApi } from "@/lib/sales";
 import { customersApi } from "@/lib/customers";
+import { configApi } from "@/lib/config";
 import { openReceiptPdf, printReceipt } from "@/lib/reports";
 import type { CartItem, PaymentMethod, Sale } from "@/types/sales";
 import type { Product } from "@/types/catalog";
@@ -56,16 +57,28 @@ export default function CheckoutPage() {
   const [saleError, setSaleError] = useState("");
 
   // Optional customer state
-  const [customerPhone, setCustomerPhone]     = useState("");
-  const [customerName, setCustomerName]       = useState("");
-  const [foundCustomer, setFoundCustomer]     = useState<Customer | null>(null);
-  const [customerStatus, setCustomerStatus]   = useState<"idle" | "found" | "new">("idle");
+  const [customerPhone, setCustomerPhone]   = useState("");
+  const [customerName, setCustomerName]     = useState("");
+  const [foundCustomer, setFoundCustomer]   = useState<Customer | null>(null);
+  const [customerStatus, setCustomerStatus] = useState<"idle" | "found" | "new">("idle");
+
+  // Tax state
+  const [applyTax, setApplyTax] = useState(false);
 
   const barcodeRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const discountRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { barcodeRef.current?.focus(); }, []);
+
+  // ── Tax setting ────────────────────────────────────────────────────────
+
+  const { data: settings = [] } = useQuery({
+    queryKey: ["settings"],
+    queryFn: configApi.settings.list,
+    staleTime: 30_000,  // refresh settings every 30s so tax rate changes appear quickly
+  });
+  const taxPct = parseFloat(settings.find((s) => s.key === "tax_pct")?.value ?? "0") || 0;
 
   // ── Product search ─────────────────────────────────────────────────────
 
@@ -193,6 +206,7 @@ export default function CheckoutPage() {
     setCustomerName("");
     setFoundCustomer(null);
     setCustomerStatus("idle");
+    setApplyTax(false);
     barcodeRef.current?.focus();
   }, []);
 
@@ -246,7 +260,12 @@ export default function CheckoutPage() {
     () => Math.round(netSubtotalPaise * billDiscountNum / 100),
     [netSubtotalPaise, billDiscountNum]
   );
-  const totalPaise = Math.max(0, netSubtotalPaise - billDiscountPaise);
+  const taxableAmount = netSubtotalPaise - billDiscountPaise;
+  const taxPaise = useMemo(
+    () => (applyTax && taxPct > 0 ? Math.round(taxableAmount * taxPct / 100) : 0),
+    [applyTax, taxPct, taxableAmount]
+  );
+  const totalPaise = Math.max(0, taxableAmount + taxPaise);
 
   // ── Create sale mutation ───────────────────────────────────────────────
 
@@ -293,10 +312,11 @@ export default function CheckoutPage() {
         payment_method: method,
         amount_tendered_paise: amountTenderedPaise,
         discount_paise: billDiscountPaise,
+        tax_paise: taxPaise,
         customer_id,
       });
     },
-    [cartItems, billDiscountPaise, foundCustomer, customerPhone, customerName, customerStatus, submitSale]
+    [cartItems, billDiscountPaise, taxPaise, foundCustomer, customerPhone, customerName, customerStatus, submitSale]
   );
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────
@@ -655,6 +675,30 @@ export default function CheckoutPage() {
                   </span>
                 </div>
               </div>
+
+
+              {/* Tax toggle — always visible; shows "Set in Settings" if rate is 0 */}
+              <div className="flex items-center justify-between">
+                <label className={`flex items-center gap-2 cursor-pointer select-none ${taxPct > 0 ? "text-muted-foreground" : "text-muted-foreground/40"}`}>
+                  <input
+                    type="checkbox"
+                    checked={applyTax}
+                    disabled={taxPct === 0}
+                    onChange={(e) => setApplyTax(e.target.checked)}
+                    className="h-3.5 w-3.5 accent-primary"
+                  />
+                  <span className="text-xs">
+                    {taxPct > 0 ? `Tax (${taxPct}% FBR/GST)` : "Tax — set rate in Settings"}
+                  </span>
+                </label>
+                <span
+                  className={`text-xs tabular-nums w-24 text-right font-medium ${
+                    applyTax && taxPaise > 0 ? "text-orange-600" : "text-muted-foreground/30"
+                  }`}
+                >
+                  {applyTax && taxPaise > 0 ? `+ ${paiseToRupees(taxPaise)}` : "—"}
+                  </span>
+                </div>
             </div>
 
             {/* Grand total */}
@@ -897,6 +941,7 @@ export default function CheckoutPage() {
         <PaymentModal
           cartItems={cartItems}
           discountPaise={billDiscountPaise}
+          taxPaise={taxPaise}
           totalPaise={totalPaise}
           onConfirm={handlePaymentConfirm}
           onCancel={() => setShowPayment(false)}

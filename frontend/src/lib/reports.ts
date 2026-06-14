@@ -1,5 +1,5 @@
 import { apiClient } from "./axios";
-import type { DailySummary, DateRangeSummary, InventoryValuation } from "@/types/config";
+import type { AuditReport, DailySummary, DateRangeSummary, InventoryValuation } from "@/types/config";
 
 export const reportsApi = {
   daily: (date: string) =>
@@ -12,7 +12,28 @@ export const reportsApi = {
 
   inventory: () =>
     apiClient.get<InventoryValuation>("/reports/inventory/").then((r) => r.data),
+
+  audit: (start: string, end: string) =>
+    apiClient
+      .get<AuditReport>("/reports/audit/", { params: { start, end } })
+      .then((r) => r.data),
 };
+
+export function downloadAuditPdf(start: string, end: string) {
+  return apiClient
+    .get<Blob>("/reports/audit/", {
+      params: { start, end, export: "pdf" },
+      responseType: "blob",
+    })
+    .then((r) => {
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `audit-${start}-to-${end}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+}
 
 export function downloadCsv(url: string, filename: string) {
   return apiClient

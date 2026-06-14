@@ -6,6 +6,8 @@ from django.utils import timezone
 from apps.catalog.models import Inventory, StockMovement
 from apps.catalog.services import apply_stock_movement
 
+from apps.accounts.activity import log_activity
+
 from .models import Payment, Sale, SaleItem, Shift
 
 
@@ -52,6 +54,7 @@ def create_sale(
     payment_method: str = "cash",
     amount_tendered_paise: int,
     discount_paise: int = 0,
+    tax_paise: int = 0,
     notes: str = "",
     customer_id: int | None = None,
 ) -> Sale:
@@ -111,7 +114,7 @@ def create_sale(
             line_total = int(qty * item["unit_price_paise"]) - item.get("discount_paise", 0)
             subtotal_paise += line_total
 
-        total_paise = subtotal_paise - discount_paise
+        total_paise = subtotal_paise - discount_paise + tax_paise
         change_paise = max(0, amount_tendered_paise - total_paise)
 
         # Auto-link this sale to the cashier's current open shift (if any).
@@ -130,7 +133,7 @@ def create_sale(
             status=Sale.Status.COMPLETED,
             subtotal_paise=subtotal_paise,
             discount_paise=discount_paise,
-            tax_paise=0,
+            tax_paise=tax_paise,
             total_paise=total_paise,
             notes=notes,
         )
@@ -171,6 +174,16 @@ def create_sale(
             change_paise=change_paise,
         )
 
+    log_activity(
+        "sale_created",
+        user=cashier,
+        details={
+            "sale_number": sale.sale_number,
+            "total_paise": total_paise,
+            "items_count": len(items),
+            "payment_method": payment_method,
+        },
+    )
     return sale
 
 
@@ -179,11 +192,17 @@ def create_sale(
 
 def open_shift(*, cashier, opening_float_paise: int = 0, notes: str = "") -> Shift:
     """Open a new shift for the cashier. No validation on concurrent open shifts."""
-    return Shift.objects.create(
+    shift = Shift.objects.create(
         cashier=cashier,
         opening_float_paise=opening_float_paise,
         notes=notes,
     )
+    log_activity(
+        "shift_opened",
+        user=cashier,
+        details={"shift_id": shift.pk, "opening_float_paise": opening_float_paise},
+    )
+    return shift
 
 
 def close_shift(*, shift: Shift, closing_cash_paise: int, closing_notes: str = "") -> dict:
@@ -213,6 +232,16 @@ def close_shift(*, shift: Shift, closing_cash_paise: int, closing_notes: str = "
     shift.closing_cash_paise = closing_cash_paise
     shift.closing_notes = closing_notes
     shift.save(update_fields=["closed_at", "closing_cash_paise", "closing_notes"])
+    log_activity(
+        "shift_closed",
+        user=shift.cashier,
+        details={
+            "shift_id": shift.pk,
+            "variance_paise": variance_paise,
+            "total_sales": agg["total_count"],
+            "total_revenue_paise": agg["total_revenue"],
+        },
+    )
 
     return {
         "opening_float_paise": shift.opening_float_paise,
@@ -223,6 +252,107 @@ def close_shift(*, shift: Shift, closing_cash_paise: int, closing_notes: str = "
         "total_sales": agg["total_count"],
         "total_revenue_paise": agg["total_revenue"],
     }
+
+
+def create_return(
+    *,
+    cashier,
+    original_sale: Sale,
+    items: list[dict],
+    notes: str = "",
+) -> Sale:
+    """
+    Process a partial or full return against an original sale.
+
+    items: [{"product_id": int, "qty": str/Decimal}]
+    - Each item must reference a product in the original sale.
+    - qty must not exceed what was originally sold.
+    - Stock is restored via RETURN StockMovements.
+    - Returns a new Sale record with sale_type=RETURN and negative total.
+    """
+    if original_sale.status == Sale.Status.VOIDED:
+        raise ValueError("Cannot return items from a voided sale.")
+    if original_sale.sale_type == Sale.SaleType.RETURN:
+        raise ValueError("Cannot return a return transaction.")
+
+    original_items = {
+        item.product_id: item for item in original_sale.items.select_related("product")
+    }
+
+    with transaction.atomic():
+        return_subtotal = 0
+        validated: list[tuple] = []
+
+        for entry in items:
+            pid = entry["product_id"]
+            qty = Decimal(str(entry["qty"]))
+
+            if pid not in original_items:
+                raise ValueError(f"Product {pid} was not in original sale.")
+            original_item = original_items[pid]
+            if qty <= 0:
+                raise ValueError(f"Return qty must be positive for product {pid}.")
+            if qty > original_item.qty:
+                raise ValueError(
+                    f"Return qty {qty} exceeds original sold qty {original_item.qty} "
+                    f"for {original_item.product.sku}."
+                )
+
+            line_total = int(qty * original_item.unit_price_paise)
+            return_subtotal += line_total
+            validated.append((original_item, qty, line_total))
+
+        if not validated:
+            raise ValueError("At least one item must be returned.")
+
+        today = timezone.localdate()
+        return_number_placeholder = f"TEMP-{timezone.now().timestamp()}"
+
+        return_sale = Sale.objects.create(
+            cashier=cashier,
+            sale_type=Sale.SaleType.RETURN,
+            return_of=original_sale,
+            status=Sale.Status.COMPLETED,
+            subtotal_paise=-return_subtotal,
+            discount_paise=0,
+            tax_paise=0,
+            total_paise=-return_subtotal,
+            notes=notes or f"Return of {original_sale.sale_number}",
+        )
+
+        seq = return_sale.pk
+        return_sale.sale_number = f"RET-{today:%Y%m%d}-{seq:05d}"
+        return_sale.save(update_fields=["sale_number"])
+
+        for original_item, qty, line_total in validated:
+            SaleItem.objects.create(
+                sale=return_sale,
+                product_id=original_item.product_id,
+                qty=qty,
+                unit_price_paise=original_item.unit_price_paise,
+                discount_paise=0,
+                subtotal_paise=-line_total,
+            )
+
+            apply_stock_movement(
+                product=original_item.product,
+                movement_type=StockMovement.MovementType.RETURN,
+                qty_change=qty,
+                reference=return_sale.sale_number,
+                created_by=cashier,
+            )
+
+    log_activity(
+        "return_created",
+        user=cashier,
+        details={
+            "return_number": return_sale.sale_number,
+            "original_sale": original_sale.sale_number,
+            "return_total_paise": -return_sale.total_paise,
+            "items_returned": len(validated),
+        },
+    )
+    return return_sale
 
 
 def void_sale(*, sale: Sale, voided_by) -> Sale:
@@ -248,4 +378,9 @@ def void_sale(*, sale: Sale, voided_by) -> Sale:
         sale.voided_at = timezone.now()
         sale.save(update_fields=["status", "voided_by", "voided_at", "updated_at"])
 
+    log_activity(
+        "sale_voided",
+        user=voided_by,
+        details={"sale_number": sale.sale_number, "total_paise": sale.total_paise},
+    )
     return sale

@@ -45,12 +45,14 @@ class SaleSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "sale_number",
+            "sale_type",
             "status",
             "cashier",
             "cashier_name",
             "customer",
             "customer_name",
             "customer_phone",
+            "return_of",
             "subtotal_paise",
             "discount_paise",
             "tax_paise",
@@ -95,11 +97,30 @@ class CreateSaleSerializer(serializers.Serializer):
     discount_paise = serializers.IntegerField(min_value=0, default=0)
     notes = serializers.CharField(max_length=500, allow_blank=True, default="")
 
+    tax_paise  = serializers.IntegerField(min_value=0, default=0)
     customer_id = serializers.IntegerField(min_value=1, required=False, allow_null=True)
 
     def validate_items(self, value):
         if not value:
             raise serializers.ValidationError("A sale must have at least one item.")
+        return value
+
+
+# ── Return serializers ────────────────────────────────────────────────────────
+
+
+class ReturnItemSerializer(serializers.Serializer):
+    product_id = serializers.IntegerField()
+    qty = serializers.DecimalField(max_digits=10, decimal_places=3, min_value=Decimal("0.001"))
+
+
+class CreateReturnSerializer(serializers.Serializer):
+    items = ReturnItemSerializer(many=True)
+    notes = serializers.CharField(max_length=500, allow_blank=True, default="")
+
+    def validate_items(self, value):
+        if not value:
+            raise serializers.ValidationError("At least one item must be returned.")
         return value
 
 
