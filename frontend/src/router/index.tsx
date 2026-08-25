@@ -5,7 +5,6 @@ import LoginPage from "@/pages/LoginPage";
 import DashboardPage from "@/pages/DashboardPage";
 import ProductsPage from "@/pages/ProductsPage";
 import CheckoutPage from "@/pages/CheckoutPage";
-import ReportsPage from "@/pages/ReportsPage";
 import BillsPage from "@/pages/BillsPage";
 import ShiftsPage from "@/pages/ShiftsPage";
 import CustomersPage from "@/pages/CustomersPage";
@@ -35,7 +34,6 @@ export const router = createBrowserRouter([
       { path: "/products", element: <ProductsPage /> },
       { path: "/bills",     element: <BillsPage /> },
       { path: "/returns",   element: <ReturnsPage /> },
-      { path: "/reports",   element: <ReportsPage /> },
       { path: "/customers", element: <CustomersPage /> },
       { path: "/shifts",    element: <ShiftsPage /> },
       { path: "/activity",  element: <ActivityPage /> },

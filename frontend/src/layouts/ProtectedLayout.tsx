@@ -4,7 +4,6 @@ import {
   LayoutDashboard,
   Package,
   ShoppingCart,
-  BarChart3,
   Clock,
   Settings,
   LogOut,
@@ -16,39 +15,70 @@ import {
   FileBarChart,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
+import { useLanguageStore } from "@/store/languageStore";
+import { useTranslation } from "@/lib/useTranslation";
 import { catalogApi } from "@/lib/catalog";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 const NAV_SECTIONS = [
   {
-    label: "Operations",
+    labelKey: "nav.sectionOperations",
     items: [
-      { to: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-      { to: "/products",  label: "Products",  icon: Package, badgeKey: "lowStock" },
-      { to: "/checkout",  label: "Checkout",  icon: ShoppingCart },
-      { to: "/bills",     label: "Bills",     icon: Receipt },
-      { to: "/returns",   label: "Returns",   icon: RotateCcw },
+      { to: "/dashboard", labelKey: "nav.dashboard", icon: LayoutDashboard },
+      { to: "/products",  labelKey: "nav.products",  icon: Package, badgeKey: "lowStock" },
+      { to: "/checkout",  labelKey: "nav.checkout",  icon: ShoppingCart },
+      { to: "/bills",     labelKey: "nav.bills",     icon: Receipt },
+      { to: "/returns",   labelKey: "nav.returns",   icon: RotateCcw },
     ],
   },
   {
-    label: "Management",
+    labelKey: "nav.sectionManagement",
     items: [
-      { to: "/customers", label: "Customers",    icon: Users },
-      { to: "/reports",   label: "Reports",      icon: BarChart3 },
-      { to: "/audit",     label: "Audit",        icon: FileBarChart },
-      { to: "/shifts",    label: "Shifts",       icon: Clock },
-      { to: "/activity",  label: "Activity Log", icon: ShieldCheck },
-      { to: "/settings",  label: "Settings",     icon: Settings },
+      { to: "/customers", labelKey: "nav.customers",   icon: Users },
+      { to: "/audit",     labelKey: "nav.audit",       icon: FileBarChart },
+      { to: "/shifts",    labelKey: "nav.shifts",      icon: Clock },
+      { to: "/activity",  labelKey: "nav.activityLog", icon: ShieldCheck },
+      { to: "/settings",  labelKey: "nav.settings",    icon: Settings },
     ],
   },
 ];
+
+function LanguageToggle() {
+  const language = useLanguageStore((s) => s.language);
+  const setLanguage = useLanguageStore((s) => s.setLanguage);
+  return (
+    <div className="flex items-center rounded-full bg-white/10 border border-white/15 p-0.5 shrink-0">
+      <button
+        type="button"
+        onClick={() => setLanguage("en")}
+        className={cn(
+          "px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors",
+          language === "en" ? "bg-white text-slate-900" : "text-white/60 hover:text-white"
+        )}
+      >
+        EN
+      </button>
+      <button
+        type="button"
+        onClick={() => setLanguage("ur")}
+        className={cn(
+          "px-2 py-0.5 rounded-full text-[10px] font-bold transition-colors",
+          language === "ur" ? "bg-white text-slate-900" : "text-white/60 hover:text-white"
+        )}
+      >
+        اردو
+      </button>
+    </div>
+  );
+}
 
 export default function ProtectedLayout() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const logout = useAuthStore((s) => s.logout);
   const user = useAuthStore((s) => s.user);
   const location = useLocation();
+  const { t } = useTranslation();
 
   const { data: lowStockProducts = [] } = useQuery({
     queryKey: ["low-stock"],
@@ -79,14 +109,17 @@ export default function ProtectedLayout() {
           <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-blue-500/20 blur-xl pointer-events-none" />
 
           <div className="relative z-10">
-            <div className="flex items-center gap-2.5 mb-3">
-              <div className="h-8 w-8 rounded-lg glass flex items-center justify-center shrink-0">
-                <Zap className="h-4 w-4 text-white" />
+            <div className="flex items-center justify-between gap-2 mb-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="h-8 w-8 rounded-lg glass flex items-center justify-center shrink-0">
+                  <Zap className="h-4 w-4 text-white" />
+                </div>
+                <div className="min-w-0">
+                  <h1 className="font-bold text-sm text-white leading-tight">Neuroqaa POS</h1>
+                  <p className="text-[10px] text-white/50 leading-tight">{t("nav.pointOfSale")}</p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <h1 className="font-bold text-sm text-white leading-tight">Neuroqaa POS</h1>
-                <p className="text-[10px] text-white/50 leading-tight">Point of Sale</p>
-              </div>
+              <LanguageToggle />
             </div>
             <div className="rounded-lg bg-white/10 px-3 py-1.5 border border-white/10">
               <p className="text-xs font-medium text-white truncate">
@@ -99,13 +132,13 @@ export default function ProtectedLayout() {
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
-          {NAV_SECTIONS.map(({ label, items }) => (
-            <div key={label}>
+          {NAV_SECTIONS.map(({ labelKey, items }) => (
+            <div key={labelKey}>
               <p className="px-3 mb-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">
-                {label}
+                {t(labelKey)}
               </p>
               <div className="space-y-0.5">
-                {items.map(({ to, label: itemLabel, icon: Icon, badgeKey }) => (
+                {items.map(({ to, labelKey: itemLabelKey, icon: Icon, badgeKey }) => (
                   <NavLink
                     key={to}
                     to={to}
@@ -119,7 +152,7 @@ export default function ProtectedLayout() {
                     }
                   >
                     <Icon className="h-4 w-4 shrink-0" />
-                    <span className="flex-1">{itemLabel}</span>
+                    <span className="flex-1">{t(itemLabelKey)}</span>
                     {badgeKey && badges[badgeKey] > 0 ? (
                       <Badge variant="warning" className="text-[10px] px-1.5 h-4 leading-none">
                         {badges[badgeKey]}
@@ -139,14 +172,14 @@ export default function ProtectedLayout() {
             className="flex w-full items-center gap-2.5 px-3 py-2 rounded-lg text-sm text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all duration-150"
           >
             <LogOut className="h-4 w-4" />
-            Sign out
+            {t("nav.signOut")}
           </button>
         </div>
 
         {/* Brand footer */}
         <div className="px-4 pb-3 pt-1">
           <p className="text-[10px] text-center text-muted-foreground/40 leading-tight">
-            Powered by{" "}
+            {t("nav.poweredBy")}{" "}
             <span className="font-semibold text-muted-foreground/60">Neuroqaa.ai</span>
           </p>
         </div>

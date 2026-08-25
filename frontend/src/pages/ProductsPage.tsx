@@ -10,18 +10,31 @@ function fmtQty(qty: string, unit: string): string {
   return parseFloat(n.toFixed(3)).toString();
 }
 import { useQuery } from "@tanstack/react-query";
-import { Search, Plus, Upload, PackageX, RefreshCw } from "lucide-react";
+import { Search, Plus, Upload, PackageX, RefreshCw, Download, Package, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { ProductModal } from "@/components/catalog/ProductModal";
 import { StockInModal } from "@/components/catalog/StockInModal";
-import { catalogApi } from "@/lib/catalog";
+import { catalogApi, paiseToRupees } from "@/lib/catalog";
+import { reportsApi, downloadCsv } from "@/lib/reports";
 import type { Product, ProductFilters } from "@/types/catalog";
+
+type ProductsTab = "catalogue" | "inventory";
+
+function SummaryCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-lg border p-4 space-y-1">
+      <p className="text-xs text-muted-foreground uppercase tracking-wide">{label}</p>
+      <p className="text-xl font-bold tabular-nums">{value}</p>
+    </div>
+  );
+}
 
 
 export default function ProductsPage() {
+  const [tab, setTab] = useState<ProductsTab>("catalogue");
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<number | "">("");
   const [lowStockOnly, setLowStockOnly] = useState(false);
@@ -54,6 +67,13 @@ export default function ProductsPage() {
   const { data: lowStockProducts = [] } = useQuery({
     queryKey: ["low-stock"],
     queryFn: catalogApi.products.lowStock,
+    staleTime: 60_000,
+  });
+
+  const { data: invData, isLoading: invLoading } = useQuery({
+    queryKey: ["report-inventory"],
+    queryFn: reportsApi.inventory,
+    enabled: tab === "inventory",
     staleTime: 60_000,
   });
 
@@ -107,19 +127,97 @@ export default function ProductsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {/* CSV import */}
-          <label className="cursor-pointer">
-            <input type="file" accept=".csv" className="hidden" onChange={handleImportCsv} />
-            <Button variant="outline" size="sm" asChild>
-              <span><Upload className="h-4 w-4 mr-1" /> Import CSV</span>
+          {tab === "catalogue" ? (
+            <>
+              {/* CSV import */}
+              <label className="cursor-pointer">
+                <input type="file" accept=".csv" className="hidden" onChange={handleImportCsv} />
+                <Button variant="outline" size="sm" asChild>
+                  <span><Upload className="h-4 w-4 mr-1" /> Import CSV</span>
+                </Button>
+              </label>
+              <Button size="sm" onClick={openAddModal}>
+                <Plus className="h-4 w-4 mr-1" /> New Product
+              </Button>
+            </>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => downloadCsv("/reports/inventory/?export=csv", "inventory-valuation.csv")}
+            >
+              <Download className="h-4 w-4 mr-1" /> Export CSV
             </Button>
-          </label>
-          <Button size="sm" onClick={openAddModal}>
-            <Plus className="h-4 w-4 mr-1" /> New Product
-          </Button>
+          )}
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="flex gap-1 border-b">
+        {(
+          [
+            { key: "catalogue" as const, label: "Catalogue", icon: Package },
+            { key: "inventory" as const, label: "Inventory Value", icon: Wallet },
+          ]
+        ).map(({ key, label, icon: Icon }) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              tab === key
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "inventory" ? (
+        <div className="space-y-6">
+          {invLoading && <p className="text-muted-foreground text-sm">Loading…</p>}
+          {invData && (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                <SummaryCard label="Cost Value" value={paiseToRupees(invData.total_cost_value_paise)} />
+                <SummaryCard label="Sell Value" value={paiseToRupees(invData.total_sell_value_paise)} />
+                <SummaryCard label="Potential Profit" value={paiseToRupees(invData.potential_profit_paise)} />
+              </div>
+              <div className="rounded-lg border overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted/50">
+                    <tr>
+                      <th className="px-4 py-2 text-left font-medium">SKU</th>
+                      <th className="px-4 py-2 text-left font-medium">Product</th>
+                      <th className="px-4 py-2 text-right font-medium">Stock</th>
+                      <th className="px-4 py-2 text-right font-medium">Cost Value</th>
+                      <th className="px-4 py-2 text-right font-medium">Sell Value</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {invData.products.map((p) => (
+                      <tr key={p.sku}>
+                        <td className="px-4 py-2 font-mono text-xs">{p.sku}</td>
+                        <td className="px-4 py-2">{p.name}</td>
+                        <td className="px-4 py-2 text-right tabular-nums">{p.stock_qty}</td>
+                        <td className="px-4 py-2 text-right tabular-nums font-mono">
+                          {paiseToRupees(p.cost_value_paise)}
+                        </td>
+                        <td className="px-4 py-2 text-right tabular-nums font-mono">
+                          {paiseToRupees(p.sell_value_paise)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      ) : (
+      <>
       {/* Import status */}
       {importStatus && (
         <div className="rounded-md bg-muted px-4 py-2 text-sm">{importStatus}</div>
@@ -267,6 +365,8 @@ export default function ProductsPage() {
             </Button>
           </div>
         </div>
+      )}
+      </>
       )}
 
       {/* Modals */}
