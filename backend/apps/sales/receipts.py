@@ -238,7 +238,7 @@ def render_pdf_receipt(sale) -> bytes:
     # ── Items table ───────────────────────────────────────────────────────
     # Columns: Item name+sku | Qty | Rate | Amount
     # Widths:    42%          | 11% | 23%  | 24%
-    col_w = [cw * 0.42, cw * 0.11, cw * 0.23, cw * 0.24]
+    col_w = [cw * 0.39, cw * 0.15, cw * 0.22, cw * 0.24]
 
     rows = [
         [
@@ -383,12 +383,346 @@ def render_pdf_receipt(sale) -> bytes:
     story.append(Paragraph("www.neuroqaa.ai", s_dev))
     story.append(Spacer(1, 8))
 
-    # ── Build with estimated dynamic height ───────────────────────────────
+    # ── Build with content-measured height (guarantees a single page) ──────
+    # Each flowable's own .wrap() height excludes its spaceBefore/spaceAfter
+    # (that padding is applied by the frame layout, not the flowable itself),
+    # so it must be added back in separately here.
     buf = io.BytesIO()
-    estimated_h = (140 + len(items) * 14) * mm_unit
+    content_h = sum(
+        f.wrap(cw, 0xFFFFFF)[1] + getattr(f, "spaceBefore", 0) + getattr(f, "spaceAfter", 0)
+        for f in story
+    )
+    page_h = content_h + 2 * margin + 30 * mm_unit
     doc = SimpleDocTemplate(
         buf,
-        pagesize=(page_w, estimated_h),
+        pagesize=(page_w, page_h),
+        leftMargin=margin,
+        rightMargin=margin,
+        topMargin=margin,
+        bottomMargin=margin,
+    )
+    doc.build(story)
+    return buf.getvalue()
+
+
+# ── PDF invoice (A4, full-page) ─────────────────────────────────────────────────
+
+
+def render_pdf_invoice(sale) -> bytes:
+    """
+    Returns raw PDF bytes for a full-page A4 invoice — an alternative to the
+    80 mm thermal receipt, meant for printing on regular paper or emailing.
+    Unlike the thermal receipt, this uses a fixed standard page size, so
+    unusually long sales simply flow onto a second A4 page, same as any
+    real invoice — no page-height guessing needed.
+    Requires reportlab.
+    """
+    try:
+        from reportlab.graphics.shapes import Circle, Drawing, String
+        from reportlab.lib import colors
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.lib.units import mm as mm_unit
+        from reportlab.platypus import (
+            HRFlowable,
+            Paragraph,
+            SimpleDocTemplate,
+            Spacer,
+            Table,
+            TableStyle,
+        )
+    except ImportError as exc:
+        raise RuntimeError("reportlab is not installed. Run: pip install reportlab") from exc
+
+    shop_name = get_setting("shop_name", "POS")
+    shop_address = get_setting("shop_address", "")
+    shop_phone = get_setting("shop_phone", "")
+    shop_email = get_setting("shop_email", "")
+    header_text = get_setting("receipt_header", "")
+    footer_text = get_setting("receipt_footer", "Thank you for your business!")
+
+    page_w = A4[0]
+    margin = 18 * mm_unit
+    cw = page_w - 2 * margin  # usable content width
+
+    primary = colors.HexColor("#4F46E5")
+    dark = colors.HexColor("#1F2937")
+    gray = colors.HexColor("#6B7280")
+    lgray = colors.HexColor("#9CA3AF")
+    row_shade = colors.HexColor("#F3F4F6")
+    amber = colors.HexColor("#B45309")
+    danger = colors.HexColor("#DC2626")
+    white = colors.white
+
+    def ps(name, **kw):
+        defaults = {
+            "fontName": "Helvetica",
+            "fontSize": 9.5,
+            "leading": 13,
+            "alignment": TA_LEFT,
+            "textColor": dark,
+        }
+        defaults.update(kw)
+        return ParagraphStyle(name, **defaults)
+
+    s_title = ps("title", fontName="Helvetica-Bold", fontSize=26, leading=30, textColor=primary)
+    s_company = ps("company", fontName="Helvetica-Bold", fontSize=12, leading=15, alignment=TA_RIGHT)
+    s_companysub = ps("companysub", fontSize=8.5, leading=12, alignment=TA_RIGHT, textColor=gray)
+    s_seclbl = ps("seclbl", fontName="Helvetica-Bold", fontSize=8, leading=11, textColor=gray)
+    s_billto = ps("billto", fontName="Helvetica-Bold", fontSize=10.5, leading=15)
+    s_billsub = ps("billsub", fontSize=9, leading=12.5, textColor=gray)
+    s_metalbl = ps("metalbl", fontSize=8.5, leading=13, textColor=gray, alignment=TA_RIGHT)
+    s_metaval = ps("metaval", fontName="Helvetica-Bold", fontSize=9.5, leading=13, alignment=TA_RIGHT)
+    s_badge = ps("badge", fontName="Helvetica-Bold", fontSize=10, leading=13, textColor=danger, alignment=TA_RIGHT)
+    s_thead = ps("thead", fontName="Helvetica-Bold", fontSize=8.5, leading=11, textColor=white)
+    s_thead_r = ps("thead_r", fontName="Helvetica-Bold", fontSize=8.5, leading=11, textColor=white, alignment=TA_RIGHT)
+    s_iname = ps("iname", fontName="Helvetica-Bold", fontSize=9.5, leading=13)
+    s_isku = ps("isku", fontSize=8, leading=11, textColor=gray)
+    s_cell_r = ps("cell_r", fontSize=9, leading=13, alignment=TA_RIGHT)
+    s_disc = ps("disc", fontSize=9, leading=13, alignment=TA_RIGHT, textColor=amber)
+    s_tlbl = ps("tlbl", fontSize=9.5, leading=15)
+    s_tval = ps("tval", fontSize=9.5, leading=15, alignment=TA_RIGHT)
+    s_grand_l = ps("grand_l", fontName="Helvetica-Bold", fontSize=12, leading=18, textColor=white)
+    s_grand_v = ps("grand_v", fontName="Helvetica-Bold", fontSize=12, leading=18, alignment=TA_RIGHT, textColor=white)
+    s_notes_lbl = ps("notes_lbl", fontName="Helvetica-Bold", fontSize=8.5, leading=12, textColor=gray)
+    s_notes = ps("notes", fontSize=8.5, leading=13, textColor=gray)
+    s_footer = ps("footer", fontSize=9.5, leading=13, alignment=TA_CENTER, textColor=dark)
+    s_footer_sm = ps("footer_sm", fontSize=7.5, leading=11, alignment=TA_CENTER, textColor=lgray)
+
+    def hr(thickness=0.75, color=colors.HexColor("#E5E7EB"), before=6, after=6):
+        return HRFlowable(
+            width="100%", thickness=thickness, color=color, spaceBefore=before, spaceAfter=after
+        )
+
+    def logo_badge(letter: str, size=15 * mm_unit):
+        d = Drawing(size, size)
+        d.add(Circle(size / 2, size / 2, size / 2, fillColor=primary, strokeColor=None))
+        d.add(
+            String(
+                size / 2,
+                size / 2 - size * 0.16,
+                letter.upper(),
+                fontName="Helvetica-Bold",
+                fontSize=size * 0.42,
+                fillColor=white,
+                textAnchor="middle",
+            )
+        )
+        return d
+
+    story = []
+
+    # ── Top accent bar ────────────────────────────────────────────────────
+    bar = Table([[""]], colWidths=[cw], rowHeights=[3 * mm_unit])
+    bar.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), primary)]))
+    story.append(bar)
+    story.append(Spacer(1, 10 * mm_unit))
+
+    # ── Header: logo + "INVOICE"  |  company info ──────────────────────────
+    company_lines = [Paragraph(shop_name, s_company)]
+    if shop_address:
+        company_lines.append(Paragraph(shop_address, s_companysub))
+    if shop_phone:
+        company_lines.append(Paragraph(shop_phone, s_companysub))
+    if shop_email:
+        company_lines.append(Paragraph(shop_email, s_companysub))
+
+    left_cell = Table(
+        [[logo_badge(shop_name[:1] or "P"), Paragraph("INVOICE", s_title)]],
+        colWidths=[18 * mm_unit, cw * 0.5 - 18 * mm_unit],
+    )
+    left_cell.setStyle(
+        TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 0)])
+    )
+
+    header_tbl = Table([[left_cell, company_lines]], colWidths=[cw * 0.5, cw * 0.5])
+    header_tbl.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    story.append(header_tbl)
+    if header_text:
+        story.append(Spacer(1, 3 * mm_unit))
+        story.append(Paragraph(header_text, s_companysub))
+    story.append(Spacer(1, 8 * mm_unit))
+    story.append(hr())
+
+    # ── Bill-to  |  invoice meta ─────────────────────────────────────────────
+    if sale.customer:
+        bill_lines = [
+            Paragraph("BILL TO", s_seclbl),
+            Spacer(1, 2),
+            Paragraph(sale.customer.display_name, s_billto),
+        ]
+        if sale.customer.phone:
+            bill_lines.append(Paragraph(sale.customer.phone, s_billsub))
+    else:
+        bill_lines = [
+            Paragraph("BILL TO", s_seclbl),
+            Spacer(1, 2),
+            Paragraph("Walk-in Customer", s_billto),
+        ]
+
+    status_line = ""
+    if sale.status == "voided":
+        status_line = "VOIDED"
+    elif sale.sale_type == "return":
+        status_line = "RETURN"
+
+    meta_rows = [
+        [Paragraph("Invoice No.", s_metalbl), Paragraph(sale.sale_number, s_metaval)],
+        [Paragraph("Date", s_metalbl), Paragraph(sale.created_at.strftime("%d %b %Y, %H:%M"), s_metaval)],
+        [Paragraph("Cashier", s_metalbl), Paragraph(sale.cashier.get_full_name() or sale.cashier.email, s_metaval)],
+    ]
+    if status_line:
+        meta_rows.append([Paragraph("Status", s_metalbl), Paragraph(status_line, s_badge)])
+
+    meta_tbl = Table(meta_rows, colWidths=[cw * 0.25, cw * 0.25])
+    meta_tbl.setStyle(TableStyle([("TOPPADDING", (0, 0), (-1, -1), 1.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5)]))
+
+    bill_meta_tbl = Table([[bill_lines, meta_tbl]], colWidths=[cw * 0.5, cw * 0.5])
+    bill_meta_tbl.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    story.append(Spacer(1, 6 * mm_unit))
+    story.append(bill_meta_tbl)
+    story.append(Spacer(1, 8 * mm_unit))
+
+    # ── Items table ───────────────────────────────────────────────────────
+    col_w = [cw * 0.40, cw * 0.14, cw * 0.14, cw * 0.12, cw * 0.20]
+    rows = [
+        [
+            Paragraph("ITEM", s_thead),
+            Paragraph("QTY", s_thead_r),
+            Paragraph("RATE", s_thead_r),
+            Paragraph("DISC", s_thead_r),
+            Paragraph("AMOUNT", s_thead_r),
+        ]
+    ]
+    items = list(sale.items.select_related("product"))
+    for item in items:
+        cell = [Paragraph(item.product.name, s_iname), Paragraph(item.product.sku, s_isku)]
+        disc_display = "—"
+        disc_style = s_cell_r
+        if item.discount_paise:
+            gross = int(item.qty * item.unit_price_paise) or 1
+            disc_pct = round(item.discount_paise * 100 / gross)
+            disc_display = f"{disc_pct}%"
+            disc_style = s_disc
+        rows.append(
+            [
+                cell,
+                Paragraph(_fmt_qty(item.qty), s_cell_r),
+                Paragraph(_money_cell(item.unit_price_paise), s_cell_r),
+                Paragraph(disc_display, disc_style),
+                Paragraph(_money_cell(item.subtotal_paise), s_cell_r),
+            ]
+        )
+
+    items_tbl = Table(rows, colWidths=col_w, repeatRows=1)
+    style_cmds = [
+        ("BACKGROUND", (0, 0), (-1, 0), primary),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+    ]
+    for i in range(1, len(rows)):
+        if i % 2 == 0:
+            style_cmds.append(("BACKGROUND", (0, i), (-1, i), row_shade))
+    items_tbl.setStyle(TableStyle(style_cmds))
+    story.append(items_tbl)
+    story.append(Spacer(1, 6 * mm_unit))
+
+    # ── Notes  |  totals ─────────────────────────────────────────────────────
+    notes_block = [Spacer(1, 0)]
+    if footer_text:
+        notes_block = [Paragraph("NOTES", s_notes_lbl), Spacer(1, 3), Paragraph(footer_text, s_notes)]
+
+    items_disc_total = sum(i.discount_paise for i in items if i.discount_paise)
+    gross_subtotal = sale.subtotal_paise + items_disc_total
+
+    totals_rows = []
+    if items_disc_total:
+        totals_rows.append([Paragraph("Gross subtotal", s_tlbl), Paragraph(_money_full(gross_subtotal), s_tval)])
+        totals_rows.append(
+            [Paragraph("Item discounts", s_tlbl), Paragraph(f"- {_money_full(items_disc_total)}", s_tval)]
+        )
+    else:
+        totals_rows.append([Paragraph("Subtotal", s_tlbl), Paragraph(_money_full(sale.subtotal_paise), s_tval)])
+    if sale.discount_paise:
+        totals_rows.append(
+            [Paragraph("Bill discount", s_tlbl), Paragraph(f"- {_money_full(sale.discount_paise)}", s_tval)]
+        )
+    if sale.tax_paise:
+        totals_rows.append([Paragraph("Tax", s_tlbl), Paragraph(_money_full(sale.tax_paise), s_tval)])
+
+    totals_tbl_inner = Table(totals_rows, colWidths=[cw * 0.28, cw * 0.22])
+    totals_tbl_inner.setStyle(
+        TableStyle([("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2)])
+    )
+
+    grand_tbl = Table(
+        [[Paragraph("TOTAL", s_grand_l), Paragraph(_money_full(sale.total_paise), s_grand_v)]],
+        colWidths=[cw * 0.28, cw * 0.22],
+    )
+    grand_tbl.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), dark),
+                ("TOPPADDING", (0, 0), (-1, -1), 6),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+                ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ]
+        )
+    )
+
+    right_block = [totals_tbl_inner, Spacer(1, 3 * mm_unit), grand_tbl]
+    if hasattr(sale, "payment"):
+        p = sale.payment
+        pay_rows = [[Paragraph(f"Paid ({p.method.upper()})", s_tlbl), Paragraph(_money_full(p.amount_tendered_paise), s_tval)]]
+        if p.change_paise:
+            pay_rows.append([Paragraph("Change", s_tlbl), Paragraph(_money_full(p.change_paise), s_tval)])
+        pay_tbl = Table(pay_rows, colWidths=[cw * 0.28, cw * 0.22])
+        pay_tbl.setStyle(TableStyle([("TOPPADDING", (0, 0), (-1, -1), 2), ("BOTTOMPADDING", (0, 0), (-1, -1), 2)]))
+        right_block += [Spacer(1, 3 * mm_unit), pay_tbl]
+
+    bottom_tbl = Table([[notes_block, right_block]], colWidths=[cw * 0.5, cw * 0.5])
+    bottom_tbl.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    story.append(bottom_tbl)
+
+    # ── Footer ────────────────────────────────────────────────────────────
+    story.append(Spacer(1, 14 * mm_unit))
+    story.append(hr(thickness=0.5))
+    story.append(Paragraph("Thank you for your business!", s_footer))
+    story.append(Spacer(1, 2 * mm_unit))
+    story.append(Paragraph(f"Generated by {shop_name} · Neuroqaa POS", s_footer_sm))
+
+    # ── Build on a fixed A4 page (multi-page for unusually long sales) ─────
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
         leftMargin=margin,
         rightMargin=margin,
         topMargin=margin,

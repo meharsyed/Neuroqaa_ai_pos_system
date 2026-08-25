@@ -1,15 +1,74 @@
-import { useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   FileBarChart, Download, Loader2, TrendingUp, TrendingDown,
-  Receipt, Wallet, ShoppingBag, Percent,
+  Receipt, Wallet, ShoppingBag, Percent, ChevronDown, FileText,
+  FileSpreadsheet, ListChecks, LayoutList,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { paiseToRupees } from "@/lib/catalog";
-import { reportsApi, downloadAuditPdf } from "@/lib/reports";
+import { reportsApi, downloadAuditPdf, downloadAuditCsv } from "@/lib/reports";
 import { useAuthStore } from "@/store/authStore";
 import type { AuditReport } from "@/types/config";
+
+// ── Small dropdown menu (button + popover with options) ─────────────────────
+
+function DropdownMenu({
+  label,
+  icon: Icon,
+  options,
+  disabled,
+}: {
+  label: string;
+  icon: React.ElementType;
+  options: { label: string; desc: string; icon: React.ElementType; onClick: () => void }[];
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref}>
+      <Button
+        onClick={() => setOpen((v) => !v)}
+        disabled={disabled}
+        variant="outline"
+        size="sm"
+        className="gap-2"
+      >
+        <Icon className="h-4 w-4" />
+        {label}
+        <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
+      </Button>
+      {open && (
+        <div className="absolute end-0 mt-1.5 w-64 rounded-xl border bg-popover shadow-lg z-20 overflow-hidden animate-fade-in-scale">
+          {options.map((opt) => (
+            <button
+              key={opt.label}
+              onClick={() => { opt.onClick(); setOpen(false); }}
+              className="w-full flex items-start gap-2.5 px-3.5 py-3 text-start hover:bg-muted/60 transition-colors border-b last:border-b-0"
+            >
+              <opt.icon className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+              <div>
+                <p className="text-sm font-medium">{opt.label}</p>
+                <p className="text-xs text-muted-foreground">{opt.desc}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -74,7 +133,9 @@ export default function AuditPage() {
   const [startDate, setStartDate] = useState(monthStartIso());
   const [endDate, setEndDate]     = useState(todayIso());
   const [queryRange, setQueryRange] = useState<{ start: string; end: string } | null>(null);
-  const [downloading, setDownloading] = useState(false);
+  const [detailed, setDetailed] = useState(false);
+  const [downloadingCsv, setDownloadingCsv] = useState(false);
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
 
   // Access guard
   if (user?.role !== "owner" && user?.role !== "manager") {
@@ -92,19 +153,34 @@ export default function AuditPage() {
   }
 
   const { data, isLoading, isError } = useQuery<AuditReport>({
-    queryKey: ["audit", queryRange],
-    queryFn: () => reportsApi.audit(queryRange!.start, queryRange!.end),
+    queryKey: ["audit", queryRange, detailed],
+    queryFn: () => reportsApi.audit(queryRange!.start, queryRange!.end, detailed),
     enabled: queryRange !== null,
     staleTime: 60_000,
   });
 
-  async function handleDownload() {
+  function generateReport(isDetailed: boolean) {
+    setDetailed(isDetailed);
+    setQueryRange({ start: startDate, end: endDate });
+  }
+
+  async function handleDownloadPdf() {
     if (!queryRange) return;
-    setDownloading(true);
+    setDownloadingPdf(true);
     try {
-      await downloadAuditPdf(queryRange.start, queryRange.end);
+      await downloadAuditPdf(queryRange.start, queryRange.end, detailed);
     } finally {
-      setDownloading(false);
+      setDownloadingPdf(false);
+    }
+  }
+
+  async function handleDownloadCsv() {
+    if (!queryRange) return;
+    setDownloadingCsv(true);
+    try {
+      await downloadAuditCsv(queryRange.start, queryRange.end, detailed);
+    } finally {
+      setDownloadingCsv(false);
     }
   }
 
@@ -118,26 +194,32 @@ export default function AuditPage() {
           <div className="flex items-center gap-2.5">
             <FileBarChart className="h-5 w-5 text-primary" />
             <div>
-              <h1 className="text-xl font-bold">Audit / Closing Report</h1>
+              <h1 className="text-xl font-bold">Audit Reports</h1>
               <p className="text-sm text-muted-foreground">
                 Profit &amp; Loss analysis with COGS breakdown — Owner/Manager only
               </p>
             </div>
           </div>
           {data && (
-            <Button
-              onClick={handleDownload}
-              disabled={downloading}
-              variant="outline"
-              size="sm"
-              className="gap-2"
-            >
-              {downloading ? (
-                <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</>
-              ) : (
-                <><Download className="h-4 w-4" /> Download PDF</>
-              )}
-            </Button>
+            <DropdownMenu
+              label={downloadingCsv || downloadingPdf ? "Preparing…" : "Download"}
+              icon={downloadingCsv || downloadingPdf ? Loader2 : Download}
+              disabled={downloadingCsv || downloadingPdf}
+              options={[
+                {
+                  label: "CSV",
+                  desc: "Spreadsheet-friendly — open in Excel or Google Sheets",
+                  icon: FileSpreadsheet,
+                  onClick: handleDownloadCsv,
+                },
+                {
+                  label: "PDF",
+                  desc: "Formatted report — ready to print or share",
+                  icon: FileText,
+                  onClick: handleDownloadPdf,
+                },
+              ]}
+            />
           )}
         </div>
       </div>
@@ -168,14 +250,25 @@ export default function AuditPage() {
               className="w-40"
             />
           </div>
-          <Button
-            onClick={() => setQueryRange({ start: startDate, end: endDate })}
+          <DropdownMenu
+            label={isLoading ? "Generating…" : "Generate Report"}
+            icon={isLoading ? Loader2 : FileBarChart}
             disabled={!startDate || !endDate || startDate > endDate || isLoading}
-            className="gap-2"
-          >
-            {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileBarChart className="h-4 w-4" />}
-            Generate Report
-          </Button>
+            options={[
+              {
+                label: "Short Report",
+                desc: "Summary totals, payment methods, top products, daily breakdown",
+                icon: LayoutList,
+                onClick: () => generateReport(false),
+              },
+              {
+                label: "Detailed Report",
+                desc: "Everything in Short, plus every individual bill for each day, itemized",
+                icon: ListChecks,
+                onClick: () => generateReport(true),
+              },
+            ]}
+          />
 
           {/* Quick presets */}
           <div className="flex gap-1.5 ml-2">
@@ -415,6 +508,71 @@ export default function AuditPage() {
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+
+            {/* Detailed transactions — only present when Detailed Report was generated */}
+            {detailed && data.daily_breakdown.some((row) => row.bills && row.bills.length > 0) && (
+              <div className="space-y-4">
+                <h3 className="font-semibold text-sm px-1">Detailed Transactions</h3>
+                {data.daily_breakdown
+                  .filter((row) => row.bills && row.bills.length > 0)
+                  .map((row) => (
+                    <div key={row.date} className="rounded-xl border overflow-hidden shadow-sm">
+                      <div className="px-4 py-2.5 bg-primary text-primary-foreground flex items-center justify-between">
+                        <span className="font-semibold text-sm">{row.date}</span>
+                        <span className="text-xs opacity-80">
+                          {row.bills!.length} bill{row.bills!.length !== 1 ? "s" : ""}
+                        </span>
+                      </div>
+                      <div className="divide-y">
+                        {row.bills!.map((bill) => (
+                          <div key={bill.sale_number} className="p-4 space-y-2">
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                              <span className="font-mono font-semibold text-foreground">{bill.sale_number}</span>
+                              <span>{bill.time.slice(11, 16)}</span>
+                              <span>{bill.cashier}</span>
+                              {bill.customer && <span className="text-primary">{bill.customer}</span>}
+                            </div>
+                            <div className="rounded-lg border overflow-hidden">
+                              <table className="w-full text-xs">
+                                <thead className="bg-muted/40">
+                                  <tr>
+                                    <th className="px-3 py-1.5 text-start font-medium text-muted-foreground">Item</th>
+                                    <th className="px-3 py-1.5 text-end font-medium text-muted-foreground">Qty</th>
+                                    <th className="px-3 py-1.5 text-end font-medium text-muted-foreground">Rate</th>
+                                    <th className="px-3 py-1.5 text-end font-medium text-muted-foreground">Amount</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y">
+                                  {bill.items.map((item, i) => (
+                                    <tr key={i}>
+                                      <td className="px-3 py-1.5">
+                                        {item.name}{" "}
+                                        <span className="text-muted-foreground font-mono text-[10px]">({item.sku})</span>
+                                      </td>
+                                      <td className="px-3 py-1.5 text-end font-mono">{item.qty}</td>
+                                      <td className="px-3 py-1.5 text-end font-mono">{paiseToRupees(item.unit_price_paise)}</td>
+                                      <td className="px-3 py-1.5 text-end font-mono font-medium">{paiseToRupees(item.subtotal_paise)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                            <div className="flex items-center justify-end gap-3 text-xs">
+                              {bill.discount_paise > 0 && (
+                                <span className="text-amber-600">− {paiseToRupees(bill.discount_paise)} discount</span>
+                              )}
+                              {bill.payment_method && (
+                                <span className="text-muted-foreground uppercase">{bill.payment_method}</span>
+                              )}
+                              <span className="font-bold text-sm">Total: {paiseToRupees(bill.total_paise)}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
               </div>
             )}
 

@@ -54,17 +54,28 @@ export interface DailySummary {
   }>;
 }
 
-export interface DateRangeSummary {
-  start: string;
-  end: string;
-  transaction_count: number;
-  total_revenue_paise: number;
-  total_discount_paise: number;
-  daily_breakdown: Array<{
-    date: string;
-    revenue_paise: number;
-    count: number;
-  }>;
+export interface AuditBillItem {
+  sku: string;
+  name: string;
+  qty: string;
+  unit_price_paise: number;
+  discount_paise: number;
+  subtotal_paise: number;
+}
+
+export interface AuditBill {
+  sale_number: string;
+  time: string;
+  cashier: string;
+  customer: string | null;
+  items: AuditBillItem[];
+  subtotal_paise: number;
+  discount_paise: number;
+  tax_paise: number;
+  total_paise: number;
+  payment_method: string | null;
+  amount_tendered_paise: number | null;
+  change_paise: number | null;
 }
 
 export interface AuditReport {
@@ -85,6 +96,7 @@ export interface AuditReport {
     count: number;
     revenue_paise: number;
     discount_paise: number;
+    bills?: AuditBill[];
   }>;
   top_products: Array<{
     sku: string;

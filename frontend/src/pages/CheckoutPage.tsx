@@ -10,12 +10,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Select } from "@/components/ui/select";
 import PaymentModal from "@/components/checkout/PaymentModal";
 import { catalogApi, paiseToRupees } from "@/lib/catalog";
 import { salesApi } from "@/lib/sales";
 import { customersApi } from "@/lib/customers";
 import { configApi } from "@/lib/config";
-import { openReceiptPdf, printReceipt } from "@/lib/reports";
+import { openReceiptPdf, printReceipt, type ReceiptTemplate } from "@/lib/reports";
+import { useTranslation } from "@/lib/useTranslation";
 import type { CartItem, PaymentMethod, Sale } from "@/types/sales";
 import type { Product } from "@/types/catalog";
 import type { Customer } from "@/types/customers";
@@ -43,6 +45,7 @@ function computeItemDiscountPaise(qty: number, unitPricePaise: number, pct: numb
 
 export default function CheckoutPage() {
   const qc = useQueryClient();
+  const { t } = useTranslation();
 
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
@@ -53,6 +56,7 @@ export default function CheckoutPage() {
 
   const [showPayment, setShowPayment] = useState(false);
   const [completedSale, setCompletedSale] = useState<Sale | null>(null);
+  const [receiptTemplate, setReceiptTemplate] = useState<ReceiptTemplate>("thermal");
   const [barcodeError, setBarcodeError] = useState("");
   const [saleError, setSaleError] = useState("");
 
@@ -79,6 +83,8 @@ export default function CheckoutPage() {
     staleTime: 30_000,  // refresh settings every 30s so tax rate changes appear quickly
   });
   const taxPct = parseFloat(settings.find((s) => s.key === "tax_pct")?.value ?? "0") || 0;
+  const defaultReceiptTemplate =
+    (settings.find((s) => s.key === "default_receipt_template")?.value as ReceiptTemplate) || "thermal";
 
   // ── Product search ─────────────────────────────────────────────────────
 
@@ -241,7 +247,7 @@ export default function CheckoutPage() {
       const product = await catalogApi.products.byBarcode(barcode);
       addToCart(product);
     } catch {
-      setBarcodeError(`Barcode "${barcode}" not found.`);
+      setBarcodeError(t("checkout.barcodeNotFound", { code: barcode }));
       setBarcodeVal("");
     }
   }, [barcodeVal, addToCart]);
@@ -273,6 +279,7 @@ export default function CheckoutPage() {
     mutationFn: salesApi.create,
     onSuccess: (sale) => {
       setCompletedSale(sale);
+      setReceiptTemplate(defaultReceiptTemplate);
       setShowPayment(false);
       setSaleError("");
       qc.invalidateQueries({ queryKey: ["products"] });
@@ -281,7 +288,7 @@ export default function CheckoutPage() {
     onError: (err: unknown) => {
       const detail =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-        ?? "Sale failed. Please check your connection and try again.";
+        ?? t("checkout.saleFailedGeneric");
       setSaleError(detail);
     },
   });
@@ -358,28 +365,28 @@ export default function CheckoutPage() {
           </div>
 
           <div>
-            <h2 className="text-2xl font-bold text-emerald-700">Sale Complete!</h2>
+            <h2 className="text-2xl font-bold text-emerald-700">{t("checkout.saleComplete")}</h2>
             <p className="text-sm text-muted-foreground font-mono mt-1">{completedSale.sale_number}</p>
           </div>
 
-          <div className="bg-white rounded-xl border shadow-sm p-4 space-y-2 text-sm text-left">
+          <div className="bg-white rounded-xl border shadow-sm p-4 space-y-2 text-sm text-start">
             <div className="flex justify-between items-center">
-              <span className="text-muted-foreground">Total charged</span>
+              <span className="text-muted-foreground">{t("checkout.totalCharged")}</span>
               <span className="font-bold text-2xl tabular-nums">{paiseToRupees(completedSale.total_paise)}</span>
             </div>
             {completedSale.payment.change_paise > 0 && (
               <div className="flex justify-between text-emerald-600 font-semibold border-t pt-2">
-                <span>Change to give</span>
+                <span>{t("checkout.changeToGive")}</span>
                 <span className="tabular-nums text-lg font-bold">{paiseToRupees(completedSale.payment.change_paise)}</span>
               </div>
             )}
             <div className="flex justify-between text-xs text-muted-foreground border-t pt-2">
-              <span>Items</span>
+              <span>{t("checkout.items")}</span>
               <span>{completedSale.items.length}</span>
             </div>
             {completedSale.discount_paise > 0 && (
               <div className="flex justify-between text-xs text-amber-600">
-                <span>Bill discount</span>
+                <span>{t("checkout.billDiscount")}</span>
                 <span>− {paiseToRupees(completedSale.discount_paise)}</span>
               </div>
             )}
@@ -387,26 +394,35 @@ export default function CheckoutPage() {
 
           <div className="flex flex-col gap-2 w-full">
             <Button onClick={clearCart} size="lg" className="w-full bg-emerald-600 hover:bg-emerald-700">
-              <ShoppingCart className="h-4 w-4 mr-2" />
-              New Sale
+              <ShoppingCart className="h-4 w-4 me-2" />
+              {t("checkout.newSaleBtn")}
             </Button>
+            <Select
+              value={receiptTemplate}
+              onChange={(e) => setReceiptTemplate(e.target.value as ReceiptTemplate)}
+              options={[
+                { value: "thermal", label: t("checkout.thermalReceiptLabel") },
+                { value: "invoice", label: t("checkout.fullInvoiceLabel") },
+              ]}
+              className="w-full text-xs h-9"
+            />
             <div className="flex gap-2">
-              <Button variant="outline" className="flex-1" onClick={() => openReceiptPdf(completedSale.id)}>
-                <FileText className="h-4 w-4 mr-1.5" /> PDF
+              <Button variant="outline" className="flex-1" onClick={() => openReceiptPdf(completedSale.id, receiptTemplate)}>
+                <FileText className="h-4 w-4 me-1.5" /> {t("checkout.pdf")}
               </Button>
               <Button
                 variant="outline"
                 className="flex-1"
                 onClick={() =>
                   printReceipt(completedSale.id)
-                    .then(() => alert("Receipt sent to printer."))
-                    .catch(() => alert("Printer not available. Check Settings → thermal_printer_ip."))
+                    .then(() => alert(t("checkout.receiptSentToPrinter")))
+                    .catch(() => alert(t("checkout.printerNotAvailable")))
                 }
               >
-                <Printer className="h-4 w-4 mr-1.5" /> Print
+                <Printer className="h-4 w-4 me-1.5" /> {t("checkout.print")}
               </Button>
               <Button variant="outline" className="flex-1" asChild>
-                <Link to="/dashboard">Dashboard</Link>
+                <Link to="/dashboard">{t("checkout.dashboardBtn")}</Link>
               </Button>
             </div>
           </div>
@@ -426,18 +442,23 @@ export default function CheckoutPage() {
           className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
-          Dashboard
+          {t("checkout.dashboardLink")}
         </Link>
         <span className="text-border">·</span>
-        <span className="font-semibold text-sm">Checkout</span>
+        <span className="font-semibold text-sm">{t("checkout.checkoutTitle")}</span>
         {cartItems.length > 0 && (
           <Badge variant="secondary" className="text-xs font-mono">
-            {totalUnits} unit{totalUnits !== 1 ? "s" : ""}
+            {totalUnits} {totalUnits !== 1 ? t("checkout.units") : t("checkout.unit")}
           </Badge>
         )}
-        <div className="ml-auto flex items-center gap-3 text-xs text-muted-foreground">
+        <div className="ms-auto flex items-center gap-3 text-xs text-muted-foreground">
           {(
-            [["F2","Search"],["F3","Barcode"],["F9","Discount"],["F12","Pay"]] as const
+            [
+              ["F2", t("checkout.kbdSearch")],
+              ["F3", t("checkout.kbdBarcode")],
+              ["F9", t("checkout.kbdDiscount")],
+              ["F12", t("checkout.kbdPay")],
+            ] as const
           ).map(([key, label]) => (
             <span key={key} className="flex items-center gap-1">
               <kbd className="px-1.5 py-0.5 border rounded text-[10px] bg-muted/60">{key}</kbd>
@@ -461,9 +482,9 @@ export default function CheckoutPage() {
                   <ShoppingCart className="h-7 w-7 opacity-25" />
                 </div>
                 <div className="text-center">
-                  <p className="text-sm font-medium">Cart is empty</p>
+                  <p className="text-sm font-medium">{t("checkout.cartEmpty")}</p>
                   <p className="text-xs text-muted-foreground/60 mt-0.5">
-                    Scan a barcode or search for a product →
+                    {t("checkout.scanOrSearchHint")}
                   </p>
                 </div>
               </div>
@@ -471,20 +492,20 @@ export default function CheckoutPage() {
               <table className="w-full text-sm">
                 <thead className="border-b bg-muted/40 sticky top-0 z-10">
                   <tr>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Product
+                    <th className="px-4 py-2.5 text-start text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {t("checkout.colProduct")}
                     </th>
                     <th className="px-2 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground w-32">
-                      Qty
+                      {t("checkout.colQty")}
                     </th>
                     <th className="px-1 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground w-[72px]">
-                      Disc %
+                      {t("checkout.colDisc")}
                     </th>
-                    <th className="px-3 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Unit Price
+                    <th className="px-3 py-2.5 text-end text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {t("checkout.colUnitPrice")}
                     </th>
-                    <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Total
+                    <th className="px-4 py-2.5 text-end text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {t("checkout.colTotal")}
                     </th>
                     <th className="w-9" />
                   </tr>
@@ -514,7 +535,7 @@ export default function CheckoutPage() {
                             {item.discount_pct > 0 && (
                               <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-700 bg-amber-100 border border-amber-200 rounded px-1 py-0 leading-4">
                                 <Tag className="h-2 w-2" />
-                                {item.discount_pct}% off
+                                {item.discount_pct}% {t("checkout.off")}
                               </span>
                             )}
                           </div>
@@ -624,9 +645,9 @@ export default function CheckoutPage() {
               {/* Net subtotal (after item discounts) */}
               <div className="flex justify-between text-muted-foreground">
                 <span>
-                  Subtotal
-                  <span className="text-xs ml-1.5 text-muted-foreground/60">
-                    ({totalUnits} unit{totalUnits !== 1 ? "s" : ""})
+                  {t("checkout.subtotal")}
+                  <span className="text-xs ms-1.5 text-muted-foreground/60">
+                    ({totalUnits} {totalUnits !== 1 ? t("checkout.units") : t("checkout.unit")})
                   </span>
                 </span>
                 <span className="tabular-nums">{paiseToRupees(netSubtotalPaise)}</span>
@@ -637,7 +658,7 @@ export default function CheckoutPage() {
                 <div className="flex justify-between text-xs text-amber-600">
                   <span className="flex items-center gap-1">
                     <Tag className="h-3 w-3" />
-                    Item discounts
+                    {t("checkout.itemDiscounts")}
                   </span>
                   <span className="tabular-nums">− {paiseToRupees(itemDiscountsTotalPaise)}</span>
                 </div>
@@ -646,7 +667,7 @@ export default function CheckoutPage() {
               {/* Bill-level discount % */}
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground flex items-center gap-1.5">
-                  Bill discount
+                  {t("checkout.billDiscount")}
                   <kbd className="text-[9px] border px-1 py-px rounded bg-muted/60 font-mono">F9</kbd>
                 </span>
                 <div className="flex items-center gap-2">
@@ -688,7 +709,7 @@ export default function CheckoutPage() {
                     className="h-3.5 w-3.5 accent-primary"
                   />
                   <span className="text-xs">
-                    {taxPct > 0 ? `Tax (${taxPct}% FBR/GST)` : "Tax — set rate in Settings"}
+                    {taxPct > 0 ? t("checkout.taxWithRate", { pct: taxPct }) : t("checkout.taxSetInSettings")}
                   </span>
                 </label>
                 <span
@@ -703,7 +724,7 @@ export default function CheckoutPage() {
 
             {/* Grand total */}
             <div className="px-4 py-3 border-t bg-muted/30 flex justify-between items-center">
-              <span className="font-bold text-base tracking-wide">TOTAL</span>
+              <span className="font-bold text-base tracking-wide">{t("checkout.total")}</span>
               <span className="tabular-nums font-bold text-2xl">{paiseToRupees(totalPaise)}</span>
             </div>
 
@@ -717,7 +738,7 @@ export default function CheckoutPage() {
                 className="flex items-center gap-1.5 shrink-0"
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                Clear
+                {t("checkout.clear")}
               </Button>
               <Button
                 size="sm"
@@ -725,9 +746,9 @@ export default function CheckoutPage() {
                 disabled={cartItems.length === 0}
                 className="flex-1 bg-gradient-to-r from-primary to-indigo-600 hover:from-primary/90 hover:to-indigo-700 shadow-sm shadow-primary/25"
               >
-                <ShoppingCart className="h-4 w-4 mr-1.5" />
-                Pay Now
-                <kbd className="ml-2 text-[10px] bg-white/20 text-white border-0 rounded px-1.5 py-0.5">
+                <ShoppingCart className="h-4 w-4 me-1.5" />
+                {t("checkout.payNow")}
+                <kbd className="ms-2 text-[10px] bg-white/20 text-white border-0 rounded px-1.5 py-0.5">
                   F12
                 </kbd>
               </Button>
@@ -741,7 +762,7 @@ export default function CheckoutPage() {
           {/* Panel header */}
           <div className="px-4 py-3 border-b bg-muted/20">
             <h2 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">
-              Add Items
+              {t("checkout.addItems")}
             </h2>
           </div>
 
@@ -749,7 +770,7 @@ export default function CheckoutPage() {
           <div className="px-4 py-3 border-b bg-background/50 space-y-2">
             <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5">
               <Phone className="h-3.5 w-3.5" />
-              Customer (optional)
+              {t("checkout.customerOptional")}
             </label>
             <div className="flex gap-1.5">
               <Input
@@ -759,7 +780,7 @@ export default function CheckoutPage() {
                   if (customerStatus !== "idle") { setCustomerStatus("idle"); setFoundCustomer(null); }
                 }}
                 onKeyDown={(e) => e.key === "Enter" && handleCustomerLookup()}
-                placeholder="03001234567"
+                placeholder={t("checkout.customerPhonePlaceholder")}
                 type="tel"
                 className="flex-1 text-sm font-mono h-8"
               />
@@ -778,7 +799,7 @@ export default function CheckoutPage() {
               <div className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5">
                 <UserCheck className="h-3.5 w-3.5 shrink-0" />
                 <span className="font-medium truncate">{foundCustomer.display_name}</span>
-                <span className="ml-auto shrink-0 text-emerald-500">{foundCustomer.total_sales} visits</span>
+                <span className="ms-auto shrink-0 text-emerald-500">{foundCustomer.total_sales} {t("checkout.visits")}</span>
               </div>
             )}
 
@@ -786,12 +807,12 @@ export default function CheckoutPage() {
               <div className="space-y-1.5">
                 <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-1.5">
                   <UserPlus className="h-3.5 w-3.5 shrink-0" />
-                  New customer — will be saved on checkout
+                  {t("checkout.newCustomerNotice")}
                 </div>
                 <Input
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="Name (optional)"
+                  placeholder={t("checkout.namePlaceholder")}
                   className="text-sm h-7"
                 />
               </div>
@@ -802,7 +823,7 @@ export default function CheckoutPage() {
                 onClick={() => { setCustomerPhone(""); setCustomerName(""); setFoundCustomer(null); setCustomerStatus("idle"); }}
                 className="text-[10px] text-muted-foreground hover:text-destructive transition-colors"
               >
-                × Remove customer
+                {t("checkout.removeCustomer")}
               </button>
             )}
           </div>
@@ -812,8 +833,8 @@ export default function CheckoutPage() {
             <div>
               <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5 mb-1.5">
                 <Barcode className="h-3.5 w-3.5" />
-                Scan Barcode
-                <span className="ml-auto font-mono text-muted-foreground/40">F3</span>
+                {t("checkout.scanBarcode")}
+                <span className="ms-auto font-mono text-muted-foreground/40">F3</span>
               </label>
               <div className="relative">
                 <Input
@@ -821,13 +842,13 @@ export default function CheckoutPage() {
                   value={barcodeVal}
                   onChange={(e) => { setBarcodeVal(e.target.value); setBarcodeError(""); }}
                   onKeyDown={(e) => e.key === "Enter" && handleBarcodeEnter()}
-                  placeholder="Scan or type barcode, Enter…"
-                  className="pr-8 font-mono text-sm"
+                  placeholder={t("checkout.barcodePlaceholder")}
+                  className="pe-8 font-mono text-sm"
                 />
                 {barcodeVal && (
                   <button
                     onClick={() => { setBarcodeVal(""); setBarcodeError(""); barcodeRef.current?.focus(); }}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    className="absolute end-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -845,14 +866,14 @@ export default function CheckoutPage() {
             <div>
               <label className="text-[10px] font-semibold text-muted-foreground uppercase tracking-widest flex items-center gap-1.5 mb-1.5">
                 <Search className="h-3.5 w-3.5" />
-                Search Product
-                <span className="ml-auto font-mono text-muted-foreground/40">F2</span>
+                {t("checkout.searchProduct")}
+                <span className="ms-auto font-mono text-muted-foreground/40">F2</span>
               </label>
               <Input
                 ref={searchRef}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Name or SKU (2+ chars)…"
+                placeholder={t("checkout.searchPlaceholder")}
                 className="text-sm"
               />
             </div>
@@ -865,7 +886,7 @@ export default function CheckoutPage() {
                 {!searchResults || searchResults.results.length === 0 ? (
                   <div className="px-4 py-8 text-center">
                     <p className="text-sm text-muted-foreground">
-                      No products found for <span className="font-medium">"{searchQuery}"</span>
+                      {t("checkout.noProductsFound", { query: searchQuery })}
                     </p>
                   </div>
                 ) : (
@@ -910,17 +931,17 @@ export default function CheckoutPage() {
               <div className="px-5 py-8 text-center text-muted-foreground space-y-4">
                 <Barcode className="h-10 w-10 mx-auto opacity-10" />
                 <div>
-                  <p className="text-sm font-medium">Scan or search to add items</p>
+                  <p className="text-sm font-medium">{t("checkout.scanOrSearchToAdd")}</p>
                   <p className="text-xs text-muted-foreground/60 mt-1">
-                    Set % discount per item in the Disc% column
+                    {t("checkout.setDiscountHint")}
                   </p>
                 </div>
-                <div className="grid grid-cols-2 gap-2 text-xs bg-muted/40 rounded-lg p-3 text-left">
+                <div className="grid grid-cols-2 gap-2 text-xs bg-muted/40 rounded-lg p-3 text-start">
                   {[
-                    ["+  /  -", "qty of selected"],
-                    ["F9", "bill discount"],
-                    ["F12", "open payment"],
-                    ["Esc", "close modal"],
+                    ["+  /  -", t("checkout.hintQtyOfSelected")],
+                    ["F9", t("checkout.hintBillDiscount")],
+                    ["F12", t("checkout.hintOpenPayment")],
+                    ["Esc", t("checkout.hintCloseModal")],
                   ].map(([key, label]) => (
                     <div key={key} className="flex items-center gap-1.5">
                       <kbd className="border px-1.5 py-0.5 rounded bg-background text-[10px] font-mono shrink-0">

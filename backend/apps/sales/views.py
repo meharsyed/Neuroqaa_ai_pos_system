@@ -11,13 +11,13 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from .models import Sale, Shift
-from .receipts import print_receipt_network, render_pdf_receipt, render_text_receipt
+from .receipts import print_receipt_network, render_pdf_invoice, render_pdf_receipt, render_text_receipt
 from .reports import (
     audit_report,
+    audit_report_csv,
     audit_report_pdf,
     daily_summary,
     daily_summary_csv,
-    date_range_summary,
     inventory_valuation,
     inventory_valuation_csv,
 )
@@ -160,21 +160,29 @@ class SaleViewSet(
         text = render_text_receipt(sale)
         return HttpResponse(text, content_type="text/plain; charset=utf-8")
 
-    @extend_schema(summary="PDF receipt (80 mm thermal)")
+    @extend_schema(
+        summary="PDF receipt — 80 mm thermal (default) or full-page A4 invoice",
+        description='Pass ?template=invoice for the A4 invoice layout. Default is the thermal receipt.',
+    )
     @action(detail=True, methods=["get"], url_path="receipt/pdf")
     def receipt_pdf(self, request, pk=None):
         sale = (
-            Sale.objects.select_related("cashier", "payment")
+            Sale.objects.select_related("cashier", "payment", "customer")
             .prefetch_related("items__product")
             .get(pk=pk)
         )
+        template = request.query_params.get("template", "thermal")
         try:
-            pdf_bytes = render_pdf_receipt(sale)
+            if template == "invoice":
+                pdf_bytes = render_pdf_invoice(sale)
+            else:
+                pdf_bytes = render_pdf_receipt(sale)
         except RuntimeError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
+        fname = f"invoice-{sale.sale_number}.pdf" if template == "invoice" else f"receipt-{sale.sale_number}.pdf"
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
-        response["Content-Disposition"] = f'inline; filename="receipt-{sale.sale_number}.pdf"'
+        response["Content-Disposition"] = f'inline; filename="{fname}"'
         return response
 
     @extend_schema(summary="Send receipt to thermal printer over network")
@@ -300,26 +308,6 @@ def report_daily(request):
     return Response(data)
 
 
-@extend_schema(summary="Revenue summary for a date range")
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def report_date_range(request):
-    start_str = request.query_params.get("start", date.today().isoformat())
-    end_str = request.query_params.get("end", date.today().isoformat())
-    try:
-        start = date.fromisoformat(start_str)
-        end = date.fromisoformat(end_str)
-    except ValueError:
-        return Response(
-            {"detail": "Invalid date. Use YYYY-MM-DD."}, status=status.HTTP_400_BAD_REQUEST
-        )
-    if end < start:
-        return Response(
-            {"detail": "end must be on or after start."}, status=status.HTTP_400_BAD_REQUEST
-        )
-    return Response(date_range_summary(start, end))
-
-
 @extend_schema(summary="Audit / closing report — owner/manager only")
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
@@ -334,6 +322,7 @@ def report_audit(request):
 
     start_str = request.query_params.get("start", date.today().replace(day=1).isoformat())
     end_str = request.query_params.get("end", date.today().isoformat())
+    detailed = request.query_params.get("detailed") == "true"
 
     try:
         start = date.fromisoformat(start_str)
@@ -344,9 +333,12 @@ def report_audit(request):
     if end < start:
         return Response({"detail": "end must be on or after start."}, status=status.HTTP_400_BAD_REQUEST)
 
-    data = audit_report(start, end)
+    data = audit_report(start, end, detailed=detailed)
 
-    if request.query_params.get("export") == "pdf":
+    export = request.query_params.get("export")
+    suffix = "-detailed" if detailed else ""
+
+    if export == "pdf":
         try:
             pdf_bytes = audit_report_pdf(
                 data,
@@ -357,8 +349,15 @@ def report_audit(request):
         except RuntimeError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
 
-        fname = f"audit-{start_str}-to-{end_str}.pdf"
+        fname = f"audit-{start_str}-to-{end_str}{suffix}.pdf"
         resp = HttpResponse(pdf_bytes, content_type="application/pdf")
+        resp["Content-Disposition"] = f'attachment; filename="{fname}"'
+        return resp
+
+    if export == "csv":
+        csv_text = audit_report_csv(data)
+        fname = f"audit-{start_str}-to-{end_str}{suffix}.csv"
+        resp = HttpResponse(csv_text, content_type="text/csv")
         resp["Content-Disposition"] = f'attachment; filename="{fname}"'
         return resp
 

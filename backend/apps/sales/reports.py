@@ -62,47 +62,6 @@ def daily_summary(report_date: date) -> dict:
     }
 
 
-def date_range_summary(start: date, end: date) -> dict:
-    from .models import Sale
-
-    completed = Sale.objects.filter(
-        status=Sale.Status.COMPLETED,
-        created_at__date__gte=start,
-        created_at__date__lte=end,
-    )
-
-    agg = completed.aggregate(
-        total_revenue=Coalesce(Sum("total_paise"), 0),
-        total_discount=Coalesce(Sum("discount_paise"), 0),
-        transaction_count=Count("id"),
-    )
-
-    daily_rows = list(
-        completed.values("created_at__date")
-        .annotate(
-            revenue_paise=Coalesce(Sum("total_paise"), 0),
-            count=Count("id"),
-        )
-        .order_by("created_at__date")
-    )
-
-    return {
-        "start": start.isoformat(),
-        "end": end.isoformat(),
-        "transaction_count": agg["transaction_count"],
-        "total_revenue_paise": agg["total_revenue"],
-        "total_discount_paise": agg["total_discount"],
-        "daily_breakdown": [
-            {
-                "date": str(row["created_at__date"]),
-                "revenue_paise": row["revenue_paise"],
-                "count": row["count"],
-            }
-            for row in daily_rows
-        ],
-    }
-
-
 def inventory_valuation() -> dict:
     from apps.catalog.models import Inventory
 
@@ -145,11 +104,15 @@ def inventory_valuation() -> dict:
 # ── Audit / closing report ────────────────────────────────────────────────────
 
 
-def audit_report(start: date, end: date) -> dict:
+def audit_report(start: date, end: date, detailed: bool = False) -> dict:
     """
     Comprehensive profit & loss audit for a date range.
     COGS is computed using each product's current cost_price_paise — an approximation
     when cost prices change over time (weighted-average costing not implemented).
+
+    When detailed=True, each entry in daily_breakdown also gets a "bills" list —
+    every completed sale on that day, reproduced in full (every line item, exactly
+    as it was sold), not just the aggregated totals.
     """
     from decimal import Decimal
 
@@ -221,6 +184,45 @@ def audit_report(start: date, end: date) -> dict:
         }
         for row in daily_rows
     ]
+
+    if detailed:
+        for row, entry in zip(daily_rows, daily_breakdown):
+            day_sales = (
+                completed.filter(created_at__date=row["created_at__date"])
+                .select_related("cashier", "customer", "payment")
+                .prefetch_related("items__product")
+                .order_by("created_at")
+            )
+            bills = []
+            for sale in day_sales:
+                payment = getattr(sale, "payment", None)
+                bills.append(
+                    {
+                        "sale_number": sale.sale_number,
+                        "time": sale.created_at.isoformat(),
+                        "cashier": sale.cashier.get_full_name() or sale.cashier.email,
+                        "customer": sale.customer.display_name if sale.customer else None,
+                        "items": [
+                            {
+                                "sku": item.product.sku,
+                                "name": item.product.name,
+                                "qty": str(item.qty),
+                                "unit_price_paise": item.unit_price_paise,
+                                "discount_paise": item.discount_paise,
+                                "subtotal_paise": item.subtotal_paise,
+                            }
+                            for item in sale.items.all()
+                        ],
+                        "subtotal_paise": sale.subtotal_paise,
+                        "discount_paise": sale.discount_paise,
+                        "tax_paise": sale.tax_paise,
+                        "total_paise": sale.total_paise,
+                        "payment_method": payment.method if payment else None,
+                        "amount_tendered_paise": payment.amount_tendered_paise if payment else None,
+                        "change_paise": payment.change_paise if payment else None,
+                    }
+                )
+            entry["bills"] = bills
 
     # Top 10 products with per-product profit
     item_agg = list(
@@ -498,6 +500,74 @@ def audit_report_pdf(data: dict, shop_name: str = "POS", shop_address: str = "",
         ]))
         story.append(day_tbl)
 
+    # ── Detailed transactions (only present when detailed=True was requested) ──
+    days_with_bills = [row for row in data["daily_breakdown"] if row.get("bills")]
+    if days_with_bills:
+        story.append(Spacer(1, 6 * mm))
+        story.append(Paragraph("DETAILED TRANSACTIONS", ps("h2", fontName="Helvetica-Bold", fontSize=10, textColor=PRIMARY)))
+        story.append(HRFlowable(width="100%", thickness=0.5, color=PRIMARY, spaceAfter=2 * mm))
+
+        for row in days_with_bills:
+            bills = row["bills"]
+            story.append(Spacer(1, 3 * mm))
+            day_label_tbl = Table(
+                [[Paragraph(
+                    f"{row['date']}  —  {len(bills)} bill{'s' if len(bills) != 1 else ''}",
+                    ps("daylbl", fontName="Helvetica-Bold", fontSize=9, textColor=colors.white),
+                )]],
+                colWidths=[cw],
+            )
+            day_label_tbl.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, -1), PRIMARY),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ]))
+            story.append(day_label_tbl)
+            story.append(Spacer(1, 2 * mm))
+
+            for bill in bills:
+                time_str = bill["time"][11:16]
+                meta = f"<b>{bill['sale_number']}</b> &nbsp;·&nbsp; {time_str} &nbsp;·&nbsp; {bill['cashier']}"
+                if bill["customer"]:
+                    meta += f" &nbsp;·&nbsp; {bill['customer']}"
+                story.append(Paragraph(meta, ps("billhdr", fontSize=8.5, spaceBefore=2, spaceAfter=1)))
+
+                item_rows = [[
+                    Paragraph('<b>Item</b>', ps("ih", fontSize=7.5)),
+                    Paragraph('<b>Qty</b>', ps("ih2", fontSize=7.5, alignment=TA_RIGHT)),
+                    Paragraph('<b>Rate</b>', ps("ih3", fontSize=7.5, alignment=TA_RIGHT)),
+                    Paragraph('<b>Amount</b>', ps("ih4", fontSize=7.5, alignment=TA_RIGHT)),
+                ]]
+                for item in bill["items"]:
+                    item_rows.append([
+                        Paragraph(
+                            f"{item['name']} <font size='6.5' color='#888888'>({item['sku']})</font>",
+                            ps("in", fontSize=7.5),
+                        ),
+                        Paragraph(item["qty"], ps("iq", fontSize=7.5, alignment=TA_RIGHT)),
+                        Paragraph(rs(item["unit_price_paise"]), ps("ir", fontSize=7.5, alignment=TA_RIGHT)),
+                        Paragraph(rs(item["subtotal_paise"]), ps("ia", fontSize=7.5, alignment=TA_RIGHT)),
+                    ])
+                item_tbl = Table(item_rows, colWidths=[cw * 0.50, cw * 0.12, cw * 0.19, cw * 0.19])
+                item_tbl.setStyle(TableStyle([
+                    ("BACKGROUND", (0, 0), (-1, 0), LIGHT),
+                    ("TOPPADDING", (0, 0), (-1, -1), 2),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+                    ("LINEBELOW", (0, -1), (-1, -1), 0.3, colors.HexColor("#CBD5E1")),
+                ]))
+                story.append(item_tbl)
+
+                pay_bits = [f"Total: <b>{rs(bill['total_paise'])}</b>"]
+                if bill["discount_paise"]:
+                    pay_bits.append(f"discount {rs(bill['discount_paise'])}")
+                if bill["payment_method"]:
+                    pay_bits.append(f"paid via {bill['payment_method'].upper()}")
+                story.append(Paragraph(
+                    "  &nbsp;·&nbsp;  ".join(pay_bits),
+                    ps("billtot", fontSize=8, alignment=TA_RIGHT, spaceBefore=1, spaceAfter=4),
+                ))
+
     # ── Footer ─────────────────────────────────────────────────────────────
     story.append(Spacer(1, 8 * mm))
     story.append(HRFlowable(width="100%", thickness=0.3, color=colors.HexColor("#CBD5E1"), spaceAfter=2 * mm))
@@ -587,4 +657,82 @@ def inventory_valuation_csv(data: dict) -> str:
             f"{data['total_sell_value_paise'] / 100:.2f}",
         ]
     )
+    return buf.getvalue()
+
+
+def audit_report_csv(data: dict) -> str:
+    """
+    CSV export of audit_report() data. If the data was generated with
+    detailed=True, each daily-breakdown row also has its individual bills
+    (every item sold) written out underneath it.
+    """
+    buf = io.StringIO()
+    w = csv.writer(buf)
+
+    w.writerow(["Audit / Closing Report"])
+    w.writerow(["Period", f"{data['period_start']} to {data['period_end']}"])
+    w.writerow(["Generated", data["generated_at"]])
+    w.writerow([])
+    w.writerow(["Transactions", data["transaction_count"]])
+    w.writerow(["Total Revenue (Rs.)", f"{data['total_revenue_paise'] / 100:.2f}"])
+    w.writerow(["Total Discounts (Rs.)", f"{data['total_discount_paise'] / 100:.2f}"])
+    w.writerow(["Tax Collected (Rs.)", f"{data['total_tax_paise'] / 100:.2f}"])
+    w.writerow(["COGS (Rs.)", f"{data['total_cogs_paise'] / 100:.2f}"])
+    w.writerow(["Gross Profit (Rs.)", f"{data['gross_profit_paise'] / 100:.2f}"])
+    w.writerow(["Gross Margin %", data["gross_margin_pct"]])
+
+    w.writerow([])
+    w.writerow(["Payment Method", "Transactions", "Total (Rs.)"])
+    for method, v in data["payment_breakdown"].items():
+        w.writerow([method, v["count"], f"{v['total_paise'] / 100:.2f}"])
+
+    w.writerow([])
+    w.writerow(["Top Products", "", "", "", "", "", ""])
+    w.writerow(["SKU", "Product", "Qty Sold", "Revenue (Rs.)", "COGS (Rs.)", "Gross Profit (Rs.)", "Margin %"])
+    for p in data["top_products"]:
+        w.writerow(
+            [
+                p["sku"], p["name"], p["qty_sold"],
+                f"{p['revenue_paise'] / 100:.2f}",
+                f"{p['cogs_paise'] / 100:.2f}",
+                f"{p['gross_profit_paise'] / 100:.2f}",
+                p["gross_margin_pct"],
+            ]
+        )
+
+    w.writerow([])
+    w.writerow(["Daily Breakdown"])
+    w.writerow(["Date", "Transactions", "Discounts (Rs.)", "Revenue (Rs.)"])
+    for row in data["daily_breakdown"]:
+        w.writerow(
+            [row["date"], row["count"], f"{row['discount_paise'] / 100:.2f}", f"{row['revenue_paise'] / 100:.2f}"]
+        )
+        bills = row.get("bills")
+        if bills:
+            w.writerow(["", "Bill #", "Time", "Cashier", "Customer", "Item", "SKU", "Qty", "Rate (Rs.)", "Discount (Rs.)", "Amount (Rs.)"])
+            for bill in bills:
+                for item in bill["items"]:
+                    w.writerow(
+                        [
+                            "",
+                            bill["sale_number"],
+                            bill["time"][11:16],
+                            bill["cashier"],
+                            bill["customer"] or "",
+                            item["name"],
+                            item["sku"],
+                            item["qty"],
+                            f"{item['unit_price_paise'] / 100:.2f}",
+                            f"{item['discount_paise'] / 100:.2f}",
+                            f"{item['subtotal_paise'] / 100:.2f}",
+                        ]
+                    )
+                w.writerow(
+                    [
+                        "", bill["sale_number"], "", "", "", "BILL TOTAL", "", "", "", "",
+                        f"{bill['total_paise'] / 100:.2f}",
+                    ]
+                )
+            w.writerow([])
+
     return buf.getvalue()

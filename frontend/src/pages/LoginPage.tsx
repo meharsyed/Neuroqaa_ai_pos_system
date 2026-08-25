@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -17,20 +17,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuthStore } from "@/store/authStore";
 import { apiClient } from "@/lib/axios";
+import { useTranslation } from "@/lib/useTranslation";
 import type { LoginResponse, LoginCredentials } from "@/types/auth";
 
-const loginSchema = z.object({
-  email: z.string().email("Enter a valid email"),
-  password: z.string().min(1, "Password is required"),
-});
-type LoginForm = z.infer<typeof loginSchema>;
-
-const FEATURES = [
-  "Keyboard-first checkout — built for speed",
-  "Real-time sales & inventory reports",
-  "Cash drawer reconciliation & shift management",
-  "ESC/POS thermal receipt printing",
-];
+type LoginForm = { email: string; password: string };
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -38,6 +28,23 @@ export default function LoginPage() {
   const setAuth = useAuthStore((s) => s.setAuth);
   const [serverError, setServerError] = useState<string | null>(null);
   const from = (location.state as { from?: string })?.from ?? "/dashboard";
+  const { t } = useTranslation();
+
+  const FEATURES = [
+    t("login.feature1"),
+    t("login.feature2"),
+    t("login.feature3"),
+    t("login.feature4"),
+  ];
+
+  const loginSchema = useMemo(
+    () =>
+      z.object({
+        email: z.string().email(t("login.emailInvalid")),
+        password: z.string().min(1, t("login.passwordRequired")),
+      }),
+    [t]
+  );
 
   const {
     register,
@@ -53,7 +60,7 @@ export default function LoginPage() {
       navigate(from, { replace: true });
     },
     onError: () => {
-      setServerError("Invalid email or password. Please try again.");
+      setServerError(t("login.invalidCredentials"));
     },
   });
 
@@ -81,7 +88,7 @@ export default function LoginPage() {
               <span className="text-white font-bold text-lg leading-tight block">
                 Neuroqaa POS
               </span>
-              <span className="text-white/50 text-xs">Point of Sale System</span>
+              <span className="text-white/50 text-xs">{t("login.pointOfSaleSystem")}</span>
             </div>
           </div>
         </div>
@@ -90,13 +97,13 @@ export default function LoginPage() {
         <div className="relative z-10 space-y-8">
           <div className="animate-fade-up-delay-1 space-y-3">
             <h2 className="text-4xl font-extrabold text-white leading-tight tracking-tight">
-              Modern POS for<br />
+              {t("login.headline1")}<br />
               <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-cyan-300">
-                Modern Businesses
+                {t("login.headline2")}
               </span>
             </h2>
             <p className="text-white/55 text-sm leading-relaxed max-w-xs">
-              Fast, reliable, and built for Quetta's growing retail market.
+              {t("login.subheadline")}
             </p>
           </div>
 
@@ -113,7 +120,7 @@ export default function LoginPage() {
         {/* Bottom: brand tag */}
         <div className="relative z-10 animate-fade-up-delay-3">
           <p className="text-white/30 text-xs">
-            Powered by{" "}
+            {t("login.poweredBy")}{" "}
             <span className="text-white/55 font-semibold">Neuroqaa.ai</span>
           </p>
         </div>
@@ -133,9 +140,9 @@ export default function LoginPage() {
 
           {/* Heading */}
           <div className="mb-8 space-y-1.5 animate-fade-up">
-            <h1 className="text-2xl font-bold tracking-tight">Welcome back</h1>
+            <h1 className="text-2xl font-bold tracking-tight">{t("login.welcomeBack")}</h1>
             <p className="text-sm text-muted-foreground">
-              Sign in to access the POS system
+              {t("login.signInSubtitle")}
             </p>
           </div>
 
@@ -150,16 +157,16 @@ export default function LoginPage() {
             {/* Email */}
             <div className="space-y-1.5 animate-fade-up-delay-1">
               <Label htmlFor="email" className="text-sm font-medium">
-                Email address
+                {t("login.emailLabel")}
               </Label>
               <div className="relative">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <Mail className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                 <Input
                   id="email"
                   type="email"
                   autoComplete="email"
-                  placeholder="you@example.com"
-                  className="pl-9 transition-all duration-200 focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  placeholder={t("login.emailPlaceholder")}
+                  className="ps-9 transition-all duration-200 focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   {...register("email")}
                 />
               </div>
@@ -173,16 +180,16 @@ export default function LoginPage() {
             {/* Password */}
             <div className="space-y-1.5 animate-fade-up-delay-2">
               <Label htmlFor="password" className="text-sm font-medium">
-                Password
+                {t("login.passwordLabel")}
               </Label>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <Lock className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
                 <Input
                   id="password"
                   type="password"
                   autoComplete="current-password"
                   placeholder="••••••••"
-                  className="pl-9 transition-all duration-200 focus:ring-2 focus:ring-primary/20 focus:border-primary"
+                  className="ps-9 transition-all duration-200 focus:ring-2 focus:ring-primary/20 focus:border-primary"
                   {...register("password")}
                 />
               </div>
@@ -207,13 +214,13 @@ export default function LoginPage() {
               >
                 {loginMutation.isPending ? (
                   <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Signing in…
+                    <Loader2 className="h-4 w-4 me-2 animate-spin" />
+                    {t("login.signingIn")}
                   </>
                 ) : (
                   <>
-                    Sign in
-                    <ArrowRight className="h-4 w-4 ml-2" />
+                    {t("login.signIn")}
+                    <ArrowRight className="h-4 w-4 ms-2" />
                   </>
                 )}
               </Button>
@@ -222,7 +229,7 @@ export default function LoginPage() {
 
           {/* Footer */}
           <p className="mt-8 text-center text-xs text-muted-foreground/50 animate-fade-up-delay-4">
-            Powered by{" "}
+            {t("login.poweredBy")}{" "}
             <span className="font-semibold text-muted-foreground/70">Neuroqaa.ai</span>
           </p>
         </div>

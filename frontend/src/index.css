@@ -64,6 +64,13 @@
     @apply bg-background text-foreground;
   }
 
+  /* Urdu (RTL) script fallback — relies on fonts already present on the OS,
+     no network font loading, so this still works fully offline. */
+  html[dir="rtl"] body {
+    font-family: "Urdu Typesetting", "Jameel Noori Nastaleeq", "Noto Nastaliq Urdu",
+      "Segoe UI", Tahoma, sans-serif;
+  }
+
   /* Custom scrollbar */
   ::-webkit-scrollbar {
     width: 5px;
