@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { ProductImage } from "@/components/ProductImage";
 import { ProductModal } from "@/components/catalog/ProductModal";
 import { StockInModal } from "@/components/catalog/StockInModal";
 import { catalogApi, paiseToRupees } from "@/lib/catalog";
@@ -299,8 +300,17 @@ export default function ProductsPage() {
             {products.map((product) => (
               <tr key={product.id} className="hover:bg-muted/30 transition-colors">
                 <td className="px-4 py-3 font-mono text-xs">{product.sku}</td>
-                <td className="px-4 py-3 font-medium max-w-[200px] truncate" title={product.name}>
-                  {product.name}
+                <td className="px-4 py-3 font-medium">
+                  <div className="flex items-center gap-3">
+                    <ProductImage
+                      imageUrl={product.image_url}
+                      productName={product.name}
+                      size="md"
+                    />
+                    <span className="max-w-[150px] truncate" title={product.name}>
+                      {product.name}
+                    </span>
+                  </div>
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">{product.category_name ?? "—"}</td>
                 <td className="px-4 py-3 text-muted-foreground">{product.unit}</td>

@@ -17,6 +17,7 @@ class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source="category.name", read_only=True, default=None)
     cost_price = serializers.SerializerMethodField()
     sell_price = serializers.SerializerMethodField()
+    image_url = serializers.SerializerMethodField()
     stock_qty = serializers.DecimalField(
         source="inventory.stock_qty",
         max_digits=10,
@@ -45,18 +46,28 @@ class ProductSerializer(serializers.ModelSerializer):
             "sell_price",
             "low_stock_threshold",
             "is_active",
+            "image",
+            "image_url",
             "stock_qty",
             "is_low_stock",
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["id", "image_url", "created_at", "updated_at"]
 
     def get_cost_price(self, obj) -> str:
         return str(Money(obj.cost_price_paise))
 
     def get_sell_price(self, obj) -> str:
         return str(Money(obj.sell_price_paise))
+
+    def get_image_url(self, obj) -> str | None:
+        if obj.image:
+            request = self.context.get("request")
+            if request:
+                return request.build_absolute_uri(obj.image.url)
+            return obj.image.url
+        return None
 
     def create(self, validated_data):
         product = super().create(validated_data)

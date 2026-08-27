@@ -21,6 +21,8 @@ export interface Product {
   sell_price: string;    // formatted "Rs. 850.00"
   low_stock_threshold: string;
   is_active: boolean;
+  image?: string | null;  // file path (e.g. "products/abc123.jpg")
+  image_url?: string | null;  // full URL to image
   stock_qty: string;
   is_low_stock: boolean;
   created_at: string;
