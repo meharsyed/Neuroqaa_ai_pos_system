@@ -57,6 +57,17 @@ class Sale(models.Model):
         blank=True,
         related_name="sales",
     )
+    class SaleType(models.TextChoices):
+        SALE = "sale", "Sale"
+        RETURN = "return", "Return"
+
+    sale_type = models.CharField(max_length=10, choices=SaleType.choices, default=SaleType.SALE)
+    return_of = models.ForeignKey(
+        "self",
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name="returns",
+    )
     status = models.CharField(max_length=20, choices=Status.choices, default=Status.COMPLETED)
 
     # All monetary values stored as integer paise (1 Rs = 100 paise)

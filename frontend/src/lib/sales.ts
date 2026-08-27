@@ -21,4 +21,9 @@ export const salesApi = {
 
   void: (id: number) =>
     apiClient.post<Sale>(`/sales/${id}/void/`).then((r) => r.data),
+
+  processReturn: (id: number, items: { product_id: number; qty: string }[], notes = "") =>
+    apiClient
+      .post<Sale>(`/sales/${id}/return/`, { items, notes })
+      .then((r) => r.data),
 };

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Receipt, Search, X, Eye, ChevronLeft, ChevronRight,
@@ -7,9 +7,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Select } from "@/components/ui/select";
 import { paiseToRupees } from "@/lib/catalog";
 import { salesApi } from "@/lib/sales";
-import { openReceiptPdf, printReceipt } from "@/lib/reports";
+import { configApi } from "@/lib/config";
+import { openReceiptPdf, printReceipt, type ReceiptTemplate } from "@/lib/reports";
 import { useAuthStore } from "@/store/authStore";
 import type { Sale } from "@/types/sales";
 
@@ -32,6 +34,20 @@ function SaleDetailModal({
   canVoid: boolean;
 }) {
   const qc = useQueryClient();
+  const [template, setTemplate] = useState<ReceiptTemplate>("thermal");
+  const [templateTouched, setTemplateTouched] = useState(false);
+
+  const { data: settings = [] } = useQuery({
+    queryKey: ["settings"],
+    queryFn: configApi.settings.list,
+    staleTime: 30_000,
+  });
+
+  useEffect(() => {
+    if (templateTouched) return;
+    const def = settings.find((s) => s.key === "default_receipt_template")?.value;
+    if (def === "thermal" || def === "invoice") setTemplate(def);
+  }, [settings, templateTouched]);
 
   const { mutate: voidSale, isPending: isVoiding } = useMutation({
     mutationFn: () => salesApi.void(sale.id),
@@ -156,11 +172,23 @@ function SaleDetailModal({
           </div>
 
           {/* Actions */}
-          <div className="flex flex-wrap gap-2 pt-1">
+          <div className="flex flex-wrap gap-2 pt-1 items-center">
             {sale.status === "completed" && (
               <>
-                <Button variant="outline" size="sm" onClick={() => openReceiptPdf(sale.id)}>
-                  <FileText className="h-3.5 w-3.5 mr-1.5" /> PDF Receipt
+                <Select
+                  value={template}
+                  onChange={(e) => {
+                    setTemplate(e.target.value as ReceiptTemplate);
+                    setTemplateTouched(true);
+                  }}
+                  options={[
+                    { value: "thermal", label: "Thermal Receipt (80mm)" },
+                    { value: "invoice", label: "Full Invoice (A4)" },
+                  ]}
+                  className="w-auto text-xs h-9"
+                />
+                <Button variant="outline" size="sm" onClick={() => openReceiptPdf(sale.id, template)}>
+                  <FileText className="h-3.5 w-3.5 mr-1.5" /> View / Print PDF
                 </Button>
                 <Button
                   variant="outline"
@@ -171,7 +199,7 @@ function SaleDetailModal({
                     )
                   }
                 >
-                  <Printer className="h-3.5 w-3.5 mr-1.5" /> Print
+                  <Printer className="h-3.5 w-3.5 mr-1.5" /> Send to Thermal Printer
                 </Button>
               </>
             )}

@@ -39,3 +39,38 @@ class User(AbstractUser):
     @property
     def full_name(self):
         return self.get_full_name() or self.email
+
+
+class ActivityLog(models.Model):
+    """Security and operational audit trail — visible to owner/manager only."""
+
+    class Action(models.TextChoices):
+        LOGIN          = "login",           "User Login"
+        LOGOUT         = "logout",          "User Logout"
+        SALE_CREATED   = "sale_created",    "Sale Created"
+        SALE_VOIDED    = "sale_voided",     "Sale Voided"
+        RETURN_CREATED = "return_created",  "Return Processed"
+        STOCK_IN       = "stock_in",        "Stock Added"
+        SETTING_CHANGED = "setting_changed", "Setting Changed"
+        SHIFT_OPENED   = "shift_opened",    "Shift Opened"
+        SHIFT_CLOSED   = "shift_closed",    "Shift Closed"
+        CUSTOMER_CREATED = "customer_created", "Customer Created"
+
+    user       = models.ForeignKey(
+        "accounts.User",
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name="activity_logs",
+    )
+    action     = models.CharField(max_length=30, choices=Action.choices, db_index=True)
+    details    = models.JSONField(default=dict)
+    ip_address = models.CharField(max_length=45, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    tenant_id  = models.IntegerField(default=1, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self) -> str:
+        who = self.user.email if self.user else "system"
+        return f"{self.get_action_display()} by {who} at {self.created_at:%Y-%m-%d %H:%M}"

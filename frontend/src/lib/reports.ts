@@ -1,18 +1,50 @@
 import { apiClient } from "./axios";
-import type { DailySummary, DateRangeSummary, InventoryValuation } from "@/types/config";
+import type { AuditReport, DailySummary, InventoryValuation } from "@/types/config";
 
 export const reportsApi = {
   daily: (date: string) =>
     apiClient.get<DailySummary>("/reports/daily/", { params: { date } }).then((r) => r.data),
 
-  dateRange: (start: string, end: string) =>
-    apiClient
-      .get<DateRangeSummary>("/reports/date-range/", { params: { start, end } })
-      .then((r) => r.data),
-
   inventory: () =>
     apiClient.get<InventoryValuation>("/reports/inventory/").then((r) => r.data),
+
+  audit: (start: string, end: string, detailed = false) =>
+    apiClient
+      .get<AuditReport>("/reports/audit/", { params: { start, end, detailed } })
+      .then((r) => r.data),
 };
+
+export function downloadAuditPdf(start: string, end: string, detailed = false) {
+  return apiClient
+    .get<Blob>("/reports/audit/", {
+      params: { start, end, export: "pdf", detailed },
+      responseType: "blob",
+    })
+    .then((r) => {
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `audit-${start}-to-${end}${detailed ? "-detailed" : ""}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+}
+
+export function downloadAuditCsv(start: string, end: string, detailed = false) {
+  return apiClient
+    .get<Blob>("/reports/audit/", {
+      params: { start, end, export: "csv", detailed },
+      responseType: "blob",
+    })
+    .then((r) => {
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `audit-${start}-to-${end}${detailed ? "-detailed" : ""}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+}
 
 export function downloadCsv(url: string, filename: string) {
   return apiClient
@@ -27,9 +59,14 @@ export function downloadCsv(url: string, filename: string) {
     });
 }
 
-export function openReceiptPdf(saleId: number) {
+export type ReceiptTemplate = "thermal" | "invoice";
+
+export function openReceiptPdf(saleId: number, template: ReceiptTemplate = "thermal") {
   return apiClient
-    .get<Blob>(`/sales/${saleId}/receipt/pdf/`, { responseType: "blob" })
+    .get<Blob>(`/sales/${saleId}/receipt/pdf/`, {
+      params: { template },
+      responseType: "blob",
+    })
     .then((r) => {
       const blobUrl = URL.createObjectURL(r.data);
       window.open(blobUrl, "_blank");

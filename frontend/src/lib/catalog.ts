@@ -48,6 +48,15 @@ export const catalogApi = {
         )
         .then((r) => r.data);
     },
+
+    uploadImage: (productId: number, formData: FormData) =>
+      apiClient
+        .patch<Product>(
+          `/products/${productId}/`,
+          formData,
+          { headers: { "Content-Type": "multipart/form-data" } }
+        )
+        .then((r) => r.data),
   },
 
   inventory: {

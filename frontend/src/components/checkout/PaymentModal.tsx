@@ -8,6 +8,7 @@ import type { CartItem, PaymentMethod } from "@/types/sales";
 interface PaymentModalProps {
   cartItems: CartItem[];
   discountPaise: number;
+  taxPaise: number;
   totalPaise: number;
   onConfirm: (method: PaymentMethod, amountTenderedPaise: number) => void;
   onCancel: () => void;
@@ -24,6 +25,7 @@ const METHODS: { key: PaymentMethod; label: string; Icon: React.FC<{ className?:
 export default function PaymentModal({
   cartItems,
   discountPaise,
+  taxPaise,
   totalPaise,
   onConfirm,
   onCancel,
@@ -79,6 +81,12 @@ export default function PaymentModal({
               <div className="flex justify-between text-amber-600 pt-1 border-t border-dashed">
                 <span>Bill discount</span>
                 <span>− {paiseToRupees(discountPaise)}</span>
+              </div>
+            )}
+            {taxPaise > 0 && (
+              <div className="flex justify-between text-orange-600 pt-1 border-t border-dashed">
+                <span>Tax (FBR/GST)</span>
+                <span>+ {paiseToRupees(taxPaise)}</span>
               </div>
             )}
             <div className="flex justify-between font-bold pt-1 border-t">
