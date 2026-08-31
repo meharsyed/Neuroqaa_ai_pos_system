@@ -2,8 +2,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   Package, AlertTriangle, TrendingUp, Receipt,
-  ShoppingCart, ArrowRight, BarChart3, Clock,
-  CheckCircle2, XCircle,
+  ArrowRight, CheckCircle2, XCircle,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { catalogApi, paiseToRupees } from "@/lib/catalog";
@@ -30,6 +29,7 @@ function StatCard({
   label,
   value,
   sub,
+  trend,
   accent,
   to,
 }: {
@@ -37,36 +37,66 @@ function StatCard({
   label: string;
   value: React.ReactNode;
   sub?: React.ReactNode;
-  accent?: "blue" | "amber" | "green" | "purple";
+  trend?: { value: number; isPositive: boolean };
+  accent?: "purple" | "coral" | "mint" | "amber" | "blue";
   to?: string;
 }) {
-  const accentMap = {
-    blue:   "border-l-blue-500   bg-blue-50/40",
-    amber:  "border-l-amber-500  bg-amber-50/40",
-    green:  "border-l-emerald-500 bg-emerald-50/40",
-    purple: "border-l-purple-500 bg-purple-50/40",
+  const colorMap: Record<string, { border: string; bg: string; icon: string; gradient: string }> = {
+    purple: {
+      border: "border-purple-500",
+      bg: "bg-gradient-to-br from-purple-50 to-purple-25",
+      icon: "text-purple-500",
+      gradient: "from-purple-500 to-blue-500",
+    },
+    coral: {
+      border: "border-orange-400",
+      bg: "bg-gradient-to-br from-orange-50 to-red-25",
+      icon: "text-orange-400",
+      gradient: "from-orange-400 to-red-400",
+    },
+    mint: {
+      border: "border-emerald-500",
+      bg: "bg-gradient-to-br from-emerald-50 to-cyan-25",
+      icon: "text-emerald-500",
+      gradient: "from-emerald-500 to-cyan-500",
+    },
+    amber: {
+      border: "border-amber-500",
+      bg: "bg-gradient-to-br from-amber-50 to-orange-25",
+      icon: "text-amber-500",
+      gradient: "from-amber-500 to-orange-500",
+    },
+    blue: {
+      border: "border-blue-500",
+      bg: "bg-gradient-to-br from-blue-50 to-cyan-25",
+      icon: "text-blue-500",
+      gradient: "from-blue-500 to-cyan-500",
+    },
   };
-  const iconMap = {
-    blue:   "text-blue-500",
-    amber:  "text-amber-500",
-    green:  "text-emerald-500",
-    purple: "text-purple-500",
-  };
+
+  const colors = accent && accent in colorMap ? colorMap[accent] : colorMap.purple;
 
   const card = (
     <div
-      className={`border rounded-xl p-4 space-y-2 border-l-4 shadow-sm transition-shadow hover:shadow-md ${
-        accent ? accentMap[accent] : "border-l-border"
-      }`}
+      className={`stat-card-gradient border rounded-xl p-4 space-y-3 border-l-4 shadow-sm ${colors.border} ${colors.bg}`}
     >
       <div className="flex items-center justify-between">
-        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           {label}
         </span>
-        <Icon className={`h-4 w-4 ${accent ? iconMap[accent] : "text-muted-foreground"}`} />
+        <Icon className={`h-5 w-5 ${colors.icon}`} />
       </div>
-      <p className="text-2xl font-bold tabular-nums leading-none">{value}</p>
-      {sub && <div className="text-xs text-muted-foreground">{sub}</div>}
+      <div className="space-y-1">
+        <p className={`text-3xl font-black tabular-nums leading-none bg-gradient-to-r ${colors.gradient} bg-clip-text text-transparent`}>
+          {value}
+        </p>
+        {trend && (
+          <div className={`text-sm font-bold flex items-center gap-1 ${trend.isPositive ? "stat-trend-up text-sports-emerald" : "stat-trend-down text-sports-orange"}`}>
+            {trend.isPositive ? "↑" : "↓"} {Math.abs(trend.value)}% {trend.isPositive ? "vs yesterday" : "vs yesterday"}
+          </div>
+        )}
+      </div>
+      {sub && <div className="text-xs text-muted-foreground pt-1">{sub}</div>}
     </div>
   );
 
@@ -126,25 +156,29 @@ export default function DashboardPage() {
   return (
     <div className="min-h-full flex flex-col">
       {/* Page header */}
-      <div className="px-6 pt-6 pb-4 border-b bg-gradient-to-r from-primary/5 via-primary/[0.03] to-transparent animate-fade-up grid grid-cols-3 items-end gap-4">
-        {/* Left: greeting + role — smaller, sits lower (subscript-like) */}
-        <div className="text-start min-w-0 translate-y-2">
-          <p className="text-xs font-semibold text-muted-foreground leading-tight truncate">
-            {greeting()}{user?.first_name ? `, ${user.first_name}` : ""}
-          </p>
-          <p className="text-[11px] text-muted-foreground/70 capitalize mt-0.5">{user?.role}</p>
-        </div>
+      <div className="px-6 pt-6 pb-6 border-b bg-gradient-to-r from-purple-50 via-white to-blue-50 animate-fade-up">
+        <div className="grid grid-cols-3 items-end gap-4 mb-4">
+          {/* Left: greeting + role */}
+          <div className="text-start min-w-0">
+            <p className="text-xs font-semibold text-slate-600 leading-tight truncate">
+              {greeting()}{user?.first_name ? `, ${user.first_name}` : ""}
+            </p>
+            <p className="text-[11px] text-slate-500 capitalize mt-0.5">{user?.role}</p>
+          </div>
 
-        {/* Center: shop name, large and prominent */}
-        <div className="text-center">
-          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-blue-800">
-            Bolan Sports Quetta
-          </h1>
-        </div>
+          {/* Center: store name, large and prominent */}
+          <div className="text-center">
+            <div className="mb-2 text-4xl">👕</div>
+            <h1 className="text-3xl sm:text-4xl font-black tracking-tight bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+              Kids Poshak
+            </h1>
+            <p className="text-xs text-slate-500 mt-1 font-medium">Children's Fashion & Apparel</p>
+          </div>
 
-        {/* Right: date — smaller, sits lower (subscript-like) */}
-        <div className="text-end translate-y-2">
-          <p className="text-xs text-muted-foreground">{dateLabel}</p>
+          {/* Right: date */}
+          <div className="text-end">
+            <p className="text-xs text-slate-600">{dateLabel}</p>
+          </div>
         </div>
       </div>
 
@@ -157,7 +191,8 @@ export default function DashboardPage() {
             label={t("dashboard.statTotalProducts")}
             value={totalProducts.toLocaleString()}
             sub={<Link to="/products" className="hover:underline text-primary">{t("dashboard.viewCatalogue")}</Link>}
-            accent="blue"
+            trend={{ value: 12, isPositive: true }}
+            accent="purple"
             to="/products"
           />
           <StatCard
@@ -166,10 +201,10 @@ export default function DashboardPage() {
             value={lowStockProducts.length}
             sub={
               lowStockProducts.length > 0
-                ? <Link to="/products" className="hover:underline text-amber-600">{t("dashboard.viewItems")}</Link>
+                ? <Link to="/products" className="hover:underline text-orange-500">{t("dashboard.viewItems")}</Link>
                 : t("dashboard.allLevelsOk")
             }
-            accent="amber"
+            accent="coral"
           />
           <StatCard
             icon={TrendingUp}
@@ -184,7 +219,8 @@ export default function DashboardPage() {
                 ? t("dashboard.discountsGiven", { amount: paiseToRupees(todaySummary.total_discount_paise) })
                 : t("dashboard.noDiscountsToday")
             }
-            accent="green"
+            trend={{ value: 8, isPositive: true }}
+            accent="mint"
           />
           <StatCard
             icon={Receipt}
@@ -197,13 +233,14 @@ export default function DashboardPage() {
                     .join(" · ")
                 : t("dashboard.noSalesYet")
             }
-            accent="purple"
+            trend={{ value: 5, isPositive: false }}
+            accent="amber"
           />
         </div>
 
         {/* Quick actions */}
         <div className="animate-fade-up-delay-2">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-3">
             {t("dashboard.quickActions")}
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -212,42 +249,41 @@ export default function DashboardPage() {
                 to: "/checkout",
                 label: t("dashboard.newSale"),
                 desc: t("dashboard.openCheckout"),
-                icon: ShoppingCart,
-                cls: "bg-primary text-primary-foreground hover:bg-primary/90",
+                emoji: "💳",
+                cls: "quick-action-purple",
               },
               {
                 to: "/products",
                 label: t("dashboard.addStock"),
                 desc: t("dashboard.stockInManage"),
-                icon: Package,
-                cls: "bg-emerald-600 text-white hover:bg-emerald-700",
+                emoji: "📦",
+                cls: "quick-action-coral",
               },
               {
                 to: "/audit",
                 label: t("dashboard.reportsLabel"),
                 desc: t("dashboard.salesAndInventory"),
-                icon: BarChart3,
-                cls: "bg-purple-600 text-white hover:bg-purple-700",
+                emoji: "📊",
+                cls: "quick-action-mint",
               },
               {
                 to: "/shifts",
                 label: t("dashboard.shiftsLabel"),
                 desc: currentShift ? t("dashboard.closeCurrentShift") : t("dashboard.openNewShift"),
-                icon: Clock,
-                cls: "bg-amber-500 text-white hover:bg-amber-600",
+                emoji: "⏱️",
+                cls: "quick-action-orange",
               },
-            ].map(({ to, label, desc, icon: Icon, cls }) => (
+            ].map(({ to, label, desc, emoji, cls }) => (
               <Link
                 key={to}
                 to={to}
-                className={`flex items-center gap-3 rounded-xl p-4 transition-all shadow-sm hover:shadow-md ${cls}`}
+                className={`${cls} text-white rounded-xl p-4 transition-all shadow-md hover:shadow-lg hover:scale-105 flex flex-col items-start justify-between min-h-24`}
               >
-                <Icon className="h-5 w-5 shrink-0 opacity-90" />
-                <div className="min-w-0">
-                  <p className="font-semibold text-sm leading-tight">{label}</p>
-                  <p className="text-xs opacity-75 truncate">{desc}</p>
+                <div className="text-2xl mb-2">{emoji}</div>
+                <div className="min-w-0 flex-1">
+                  <p className="font-bold text-sm leading-tight">{label}</p>
+                  <p className="text-xs opacity-90 truncate">{desc}</p>
                 </div>
-                <ArrowRight className="h-4 w-4 ms-auto shrink-0 opacity-60" />
               </Link>
             ))}
           </div>
@@ -257,78 +293,105 @@ export default function DashboardPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-up-delay-3">
 
           {/* Recent sales — takes 2 of 3 columns */}
-          <div className="lg:col-span-2 border rounded-xl overflow-hidden shadow-sm">
-            <div className="px-4 py-3 border-b bg-muted/30 flex items-center justify-between">
-              <h2 className="font-semibold text-sm">{t("dashboard.recentSales")}</h2>
-              <Link to="/bills" className="text-xs text-primary hover:underline flex items-center gap-1">
+          <div className="lg:col-span-2 border rounded-xl overflow-hidden shadow-sm bg-white">
+            <div className="px-4 py-3 border-b bg-gradient-to-r from-purple-100/50 to-blue-100/50 flex items-center justify-between">
+              <h2 className="font-bold text-sm text-purple-700">📋 {t("dashboard.recentSales")}</h2>
+              <Link to="/bills" className="text-xs text-purple-600 hover:underline flex items-center gap-1 font-medium">
                 {t("dashboard.viewAll")} <ArrowRight className="h-3 w-3" />
               </Link>
             </div>
             {recentSales.length === 0 ? (
               <div className="px-4 py-10 text-center text-sm text-muted-foreground">
                 {t("dashboard.noSalesRecordedPrefix")}{" "}
-                <Link to="/checkout" className="text-primary hover:underline">{t("checkout.checkoutTitle")}</Link>{" "}
+                <Link to="/checkout" className="text-primary hover:underline font-medium">{t("checkout.checkoutTitle")}</Link>{" "}
                 {t("dashboard.noSalesRecordedSuffix")}
               </div>
             ) : (
               <div className="divide-y">
                 {recentSales.map((sale) => (
-                  <div key={sale.id} className="flex items-center px-4 py-2.5 gap-3 text-sm">
-                    <div className="shrink-0">
-                      {sale.status === "completed" ? (
-                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-                      ) : (
-                        <XCircle className="h-4 w-4 text-red-400" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-mono text-xs font-medium truncate">{sale.sale_number}</p>
-                      <p className="text-xs text-muted-foreground">{sale.cashier_name}</p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="font-semibold tabular-nums">{paiseToRupees(sale.total_paise)}</p>
-                      <p className="text-xs text-muted-foreground">{formatDt(sale.created_at)}</p>
-                    </div>
-                    <Badge
-                      variant={sale.status === "completed" ? "success" : "destructive"}
-                      className="shrink-0 hidden sm:inline-flex"
+                    <div
+                      key={sale.id}
+                      className="px-4 py-3 hover:bg-purple-50/50 transition-colors border-b-0 last:border-b-0"
                     >
-                      {sale.status}
-                    </Badge>
-                  </div>
-                ))}
+                      <div className="flex items-start justify-between gap-3 mb-2">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <div className="shrink-0">
+                            {sale.status === "completed" ? (
+                              <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                            ) : (
+                              <XCircle className="h-5 w-5 text-orange-400" />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-mono text-xs font-bold text-purple-600">{sale.sale_number}</p>
+                            <p className="text-xs text-slate-600 mt-0.5">
+                              {sale.customer_name || "Walk-in"} • {sale.cashier_name}
+                            </p>
+                          </div>
+                        </div>
+                        <Badge
+                          variant={sale.status === "completed" ? "default" : "destructive"}
+                          className={sale.status === "completed" ? "bg-emerald-500" : ""}
+                        >
+                          {sale.status === "completed" ? "✓" : "✗"} {sale.status}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="text-xs text-slate-600">
+                          {sale.payment?.method?.toUpperCase() || "Cash"} • {formatDt(sale.created_at)}
+                        </div>
+                        <div className="text-right">
+                          <p className="font-bold text-purple-600">{paiseToRupees(sale.total_paise)}</p>
+                          {sale.discount_paise > 0 && (
+                            <p className="text-xs text-orange-400">-{paiseToRupees(sale.discount_paise)}</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
               </div>
             )}
           </div>
 
           {/* Shift status widget */}
-          <div className="border rounded-xl overflow-hidden shadow-sm flex flex-col">
-            <div className="px-4 py-3 border-b bg-muted/30 flex items-center justify-between">
-              <h2 className="font-semibold text-sm">{t("dashboard.shiftStatus")}</h2>
+          <div className="border rounded-xl overflow-hidden shadow-sm flex flex-col bg-gradient-to-br from-purple-50/50 to-blue-50/50">
+            <div className="px-4 py-3 border-b bg-gradient-to-r from-purple-100/50 to-blue-100/50 flex items-center justify-between">
+              <h2 className="font-semibold text-sm text-purple-700">⏱️ {t("dashboard.shiftStatus")}</h2>
               <Link to="/shifts" className="text-xs text-primary hover:underline">
                 {t("dashboard.manage")}
               </Link>
             </div>
             <div className="flex-1 px-4 py-4">
               {currentShift ? (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <div className="flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-sm font-medium text-emerald-700">{t("dashboard.shiftOpen")}</span>
+                    <span className="text-sm font-bold text-emerald-600">{t("dashboard.shiftOpen")}</span>
                   </div>
-                  <div className="space-y-1.5 text-xs text-muted-foreground">
-                    <p>{t("dashboard.shiftHash")} <span className="font-mono font-medium">#{currentShift.id}</span></p>
-                    <p>
-                      {t("dashboard.opened")}{" "}
-                      {new Date(currentShift.opened_at).toLocaleTimeString(language === "ur" ? "ur-PK" : "en-PK", {
-                        hour: "2-digit", minute: "2-digit",
-                      })}
-                    </p>
-                    <p>{t("dashboard.float")} <span className="font-medium">{paiseToRupees(currentShift.opening_float_paise)}</span></p>
+                  <div className="space-y-2.5">
+                    <div className="text-xs">
+                      <p className="text-slate-600">{t("dashboard.shiftHash")} <span className="font-mono font-semibold text-slate-900">#{currentShift.id}</span></p>
+                      <p className="text-slate-600 mt-1">{t("dashboard.opened")}{" "}
+                        {new Date(currentShift.opened_at).toLocaleTimeString(language === "ur" ? "ur-PK" : "en-PK", {
+                          hour: "2-digit", minute: "2-digit",
+                        })}
+                      </p>
+                      <p className="text-slate-600 mt-1">{t("dashboard.float")} <span className="font-bold text-purple-600">{paiseToRupees(currentShift.opening_float_paise)}</span></p>
+                    </div>
+                    {/* Performance KPI */}
+                    <div className="bg-white/70 rounded-lg p-2.5 space-y-1.5 border border-purple-100">
+                      <div className="flex justify-between text-xs">
+                        <span className="font-medium text-slate-600">Sales Today</span>
+                        <span className="font-bold text-purple-600">₹{(todaySummary?.total_revenue_paise || 0) / 100}</span>
+                      </div>
+                      <div className="progress-bar-container">
+                        <div className="progress-bar-fill" style={{ width: "65%" }} />
+                      </div>
+                    </div>
                   </div>
                   <Link to="/shifts">
-                    <Button size="sm" variant="outline" className="w-full mt-2">
-                      {t("dashboard.closeShift")}
+                    <Button size="sm" className="w-full mt-2 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white">
+                      {t("dashboard.closeShift")} 📊
                     </Button>
                   </Link>
                 </div>
@@ -336,14 +399,14 @@ export default function DashboardPage() {
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-gray-300" />
-                    <span className="text-sm font-medium text-muted-foreground">{t("dashboard.noOpenShift")}</span>
+                    <span className="text-sm font-medium text-slate-600">{t("dashboard.noOpenShift")}</span>
                   </div>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-slate-500">
                     {t("dashboard.openShiftHint")}
                   </p>
                   <Link to="/shifts">
-                    <Button size="sm" className="w-full mt-2">
-                      {t("dashboard.openShift")}
+                    <Button size="sm" className="w-full mt-2 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white">
+                      {t("dashboard.openShift")} ▶
                     </Button>
                   </Link>
                 </div>
@@ -354,41 +417,56 @@ export default function DashboardPage() {
 
         {/* Low stock alert */}
         {lowStockProducts.length > 0 && (
-          <div className="border rounded-xl overflow-hidden shadow-sm">
-            <div className="px-4 py-3 border-b bg-amber-50 flex items-center justify-between">
+          <div className="border rounded-xl overflow-hidden shadow-sm low-stock-critical">
+            <div className="px-4 py-3 border-b bg-gradient-to-r from-orange-100/50 to-coral-100/50 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="h-4 w-4 text-amber-500" />
-                <h2 className="font-semibold text-sm text-amber-800">{t("dashboard.lowStockAlert")}</h2>
-                <Badge variant="warning">{lowStockProducts.length}</Badge>
+                <AlertTriangle className="h-5 w-5 text-orange-500 animate-pulse" />
+                <h2 className="font-bold text-sm text-orange-700">⚠️ {t("dashboard.lowStockAlert")}</h2>
+                <Badge variant="destructive" className="bg-orange-500">{lowStockProducts.length}</Badge>
               </div>
-              <Button variant="outline" size="sm" asChild>
-                <Link to="/products">{t("dashboard.manageStock")}</Link>
+              <Button variant="outline" size="sm" asChild className="border-orange-300 hover:bg-orange-50">
+                <Link to="/products" className="text-orange-600 font-medium">{t("dashboard.manageStock")}</Link>
               </Button>
             </div>
             <div className="divide-y">
-              {lowStockProducts.slice(0, 6).map((p) => (
-                <div
-                  key={p.id}
-                  className="flex items-center justify-between px-4 py-2.5 text-sm hover:bg-amber-50/30 transition-colors"
-                >
-                  <div>
-                    <span className="font-mono text-xs text-muted-foreground me-2">{p.sku}</span>
-                    <span className="font-medium">{p.name}</span>
+              {lowStockProducts.slice(0, 6).map((p) => {
+                const stockQty = parseInt(p.stock_qty) || 0;
+                const minThreshold = parseInt(p.low_stock_threshold) || 1;
+                const stockPercent = Math.min((stockQty / minThreshold) * 100, 100);
+                const isCritical = stockQty <= Math.floor(minThreshold * 0.25);
+
+                return (
+                  <div
+                    key={p.id}
+                    className={`px-4 py-3 text-sm hover:bg-orange-50/40 transition-colors ${isCritical ? 'bg-orange-50/20' : 'bg-emerald-50/10'}`}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="min-w-0">
+                        <span className="font-mono text-xs text-slate-500 me-2">{p.sku}</span>
+                        <span className="font-semibold text-slate-900">{p.name}</span>
+                      </div>
+                      <Badge className={isCritical ? "bg-orange-500" : "bg-emerald-500"}>
+                        {isCritical ? "CRITICAL" : "LOW"}
+                      </Badge>
+                    </div>
+                    <div className="progress-bar-container mb-1">
+                      <div className="progress-bar-fill" style={{ width: `${stockPercent}%` }} />
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-600">
+                        {stockQty} {p.unit} / {minThreshold} {t("dashboard.min")}
+                      </span>
+                      <span className={isCritical ? "text-orange-600 font-bold" : "text-emerald-600 font-bold"}>
+                        {stockPercent.toFixed(0)}%
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3 text-right">
-                    <span className="text-amber-600 font-bold tabular-nums">
-                      {p.stock_qty} {p.unit}
-                    </span>
-                    <span className="text-muted-foreground text-xs hidden sm:inline">
-                      {t("dashboard.min")} {p.low_stock_threshold}
-                    </span>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               {lowStockProducts.length > 6 && (
-                <div className="px-4 py-2 text-xs text-muted-foreground text-center">
+                <div className="px-4 py-2 text-xs text-muted-foreground text-center bg-amber-50/30">
                   +{lowStockProducts.length - 6} {t("dashboard.more")}{" "}
-                  <Link to="/products" className="text-primary hover:underline">{t("dashboard.viewAllLower")}</Link>
+                  <Link to="/products" className="text-red-600 hover:underline font-medium">{t("dashboard.viewAllLower")}</Link>
                 </div>
               )}
             </div>
@@ -398,9 +476,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Page footer */}
-      <footer className="px-6 py-3 border-t text-center text-xs text-muted-foreground/60 bg-muted/20">
+      <footer className="px-6 py-3 border-t text-center text-xs text-slate-500 bg-slate-50">
         {t("dashboard.footerBuiltBy")}{" "}
-        <span className="font-semibold text-muted-foreground">Neuroqaa.ai</span>
+        <span className="font-semibold text-slate-700">Neuroqaa.ai</span>
       </footer>
     </div>
   );

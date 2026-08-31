@@ -99,34 +99,22 @@ export default function ProtectedLayout() {
     <div className="flex h-screen bg-background">
 
       {/* ── Sidebar ──────────────────────────────────────────── */}
-      <aside className="w-56 flex flex-col shrink-0 border-r bg-card shadow-[1px_0_0_0_hsl(var(--border))]">
+      <aside className="w-56 flex flex-col shrink-0 border-r bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 shadow-[1px_0_0_0_hsl(var(--border))]">
 
-        {/* Brand header */}
-        <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-900 px-4 py-4">
-          {/* Subtle dot grid */}
-          <div className="absolute inset-0 bg-dot-grid opacity-60 pointer-events-none" />
-          {/* Glow blob */}
-          <div className="absolute -top-6 -right-6 w-24 h-24 rounded-full bg-blue-500/20 blur-xl pointer-events-none" />
-
-          <div className="relative z-10">
-            <div className="flex items-center justify-between gap-2 mb-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="h-8 w-8 rounded-lg glass flex items-center justify-center shrink-0">
-                  <Zap className="h-4 w-4 text-white" />
-                </div>
-                <div className="min-w-0">
-                  <h1 className="font-bold text-sm text-white leading-tight">Neuroqaa POS</h1>
-                  <p className="text-[10px] text-white/50 leading-tight">{t("nav.pointOfSale")}</p>
-                </div>
+        {/* Brand header — Dark sidebar with Neuroqaa.ai */}
+        <div className="sidebar-brand-header relative overflow-hidden px-4 py-5">
+          <div className="relative z-10 space-y-3">
+            {/* Neuroqaa.ai branding */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-black text-orange-400">◆</span>
+                <p className="text-xs font-bold text-gray-300 uppercase tracking-wider">Neuroqaa.ai</p>
               </div>
-              <LanguageToggle />
+              <p className="text-[10px] text-gray-400 italic">Modern POS for Modern Businesses</p>
             </div>
-            <div className="rounded-lg bg-white/10 px-3 py-1.5 border border-white/10">
-              <p className="text-xs font-medium text-white truncate">
-                {user?.first_name || user?.email}
-              </p>
-              <p className="text-[10px] text-white/55 capitalize">{user?.role}</p>
-            </div>
+
+            {/* Language toggle */}
+            <LanguageToggle />
           </div>
         </div>
 

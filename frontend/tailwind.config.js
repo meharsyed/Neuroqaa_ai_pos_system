@@ -43,6 +43,14 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        kids: {
+          purple: "hsl(var(--primary-purple))",
+          teal: "hsl(var(--primary-teal))",
+          coral: "hsl(var(--accent-coral))",
+          mint: "hsl(var(--accent-mint))",
+          orange: "hsl(var(--accent-orange))",
+          sidebar: "hsl(var(--sidebar-dark))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
