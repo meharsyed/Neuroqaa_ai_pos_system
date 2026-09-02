@@ -99,18 +99,21 @@ export default function ProtectedLayout() {
     <div className="flex h-screen bg-background">
 
       {/* ── Sidebar ──────────────────────────────────────────── */}
-      <aside className="w-56 flex flex-col shrink-0 border-r bg-gradient-to-b from-slate-900 via-slate-800 to-slate-900 shadow-[1px_0_0_0_hsl(var(--border))]">
+      <aside className="w-56 flex flex-col shrink-0 border-r bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 shadow-[1px_0_0_0_hsl(var(--border))]">
 
-        {/* Brand header — Dark sidebar with Neuroqaa.ai */}
+        {/* Brand header — Speed Tech Solutions Premium Branding */}
         <div className="sidebar-brand-header relative overflow-hidden px-4 py-5">
           <div className="relative z-10 space-y-3">
-            {/* Neuroqaa.ai branding */}
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <span className="text-lg font-black text-orange-400">◆</span>
-                <p className="text-xs font-bold text-gray-300 uppercase tracking-wider">Neuroqaa.ai</p>
+            {/* Speed Tech Solutions branding */}
+            <div className="space-y-2.5">
+              <div className="flex items-center gap-2.5">
+                <span className="text-xl font-black text-teal-400">⚔️</span>
+                <div>
+                  <p className="text-sm font-black text-white uppercase tracking-wider leading-tight">Speed Tech</p>
+                  <p className="text-[9px] font-bold text-teal-300 uppercase tracking-wider">Solutions</p>
+                </div>
               </div>
-              <p className="text-[10px] text-gray-400 italic">Modern POS for Modern Businesses</p>
+              <p className="text-[10px] text-gray-300 italic pl-0.5">Enterprise Security Solutions</p>
             </div>
 
             {/* Language toggle */}

@@ -43,12 +43,13 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        kids: {
-          purple: "hsl(var(--primary-purple))",
+        speedtech: {
           teal: "hsl(var(--primary-teal))",
-          coral: "hsl(var(--accent-coral))",
-          mint: "hsl(var(--accent-mint))",
+          "teal-light": "hsl(var(--primary-teal-light))",
+          dark: "hsl(var(--secondary-dark))",
+          "bright-teal": "hsl(var(--accent-bright-teal))",
           orange: "hsl(var(--accent-orange))",
+          red: "hsl(var(--accent-red))",
           sidebar: "hsl(var(--sidebar-dark))",
         },
       },

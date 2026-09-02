@@ -38,43 +38,43 @@ function StatCard({
   value: React.ReactNode;
   sub?: React.ReactNode;
   trend?: { value: number; isPositive: boolean };
-  accent?: "purple" | "coral" | "mint" | "amber" | "blue";
+  accent?: "navy" | "orange" | "teal" | "gray" | "red";
   to?: string;
 }) {
   const colorMap: Record<string, { border: string; bg: string; icon: string; gradient: string }> = {
-    purple: {
-      border: "border-purple-500",
-      bg: "bg-gradient-to-br from-purple-50 to-purple-25",
-      icon: "text-purple-500",
-      gradient: "from-purple-500 to-blue-500",
+    navy: {
+      border: "border-teal-600",
+      bg: "bg-gradient-to-br from-teal-50 to-cyan-25",
+      icon: "text-teal-600",
+      gradient: "from-teal-600 to-teal-500",
     },
-    coral: {
-      border: "border-orange-400",
+    orange: {
+      border: "border-orange-500",
       bg: "bg-gradient-to-br from-orange-50 to-red-25",
-      icon: "text-orange-400",
-      gradient: "from-orange-400 to-red-400",
+      icon: "text-orange-500",
+      gradient: "from-orange-500 to-red-500",
     },
-    mint: {
-      border: "border-emerald-500",
-      bg: "bg-gradient-to-br from-emerald-50 to-cyan-25",
-      icon: "text-emerald-500",
-      gradient: "from-emerald-500 to-cyan-500",
+    teal: {
+      border: "border-cyan-500",
+      bg: "bg-gradient-to-br from-cyan-50 to-teal-25",
+      icon: "text-cyan-500",
+      gradient: "from-cyan-500 to-teal-500",
     },
-    amber: {
-      border: "border-amber-500",
-      bg: "bg-gradient-to-br from-amber-50 to-orange-25",
-      icon: "text-amber-500",
-      gradient: "from-amber-500 to-orange-500",
+    gray: {
+      border: "border-slate-500",
+      bg: "bg-gradient-to-br from-slate-50 to-gray-25",
+      icon: "text-slate-500",
+      gradient: "from-slate-600 to-slate-500",
     },
-    blue: {
-      border: "border-blue-500",
-      bg: "bg-gradient-to-br from-blue-50 to-cyan-25",
-      icon: "text-blue-500",
-      gradient: "from-blue-500 to-cyan-500",
+    red: {
+      border: "border-red-600",
+      bg: "bg-gradient-to-br from-red-50 to-rose-25",
+      icon: "text-red-600",
+      gradient: "from-red-600 to-red-500",
     },
   };
 
-  const colors = accent && accent in colorMap ? colorMap[accent] : colorMap.purple;
+  const colors = accent && accent in colorMap ? colorMap[accent] : colorMap.navy;
 
   const card = (
     <div
@@ -155,29 +155,30 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-full flex flex-col">
-      {/* Page header */}
-      <div className="px-6 pt-6 pb-6 border-b bg-gradient-to-r from-purple-50 via-white to-blue-50 animate-fade-up">
-        <div className="grid grid-cols-3 items-end gap-4 mb-4">
-          {/* Left: greeting + role */}
-          <div className="text-start min-w-0">
-            <p className="text-xs font-semibold text-slate-600 leading-tight truncate">
-              {greeting()}{user?.first_name ? `, ${user.first_name}` : ""}
-            </p>
-            <p className="text-[11px] text-slate-500 capitalize mt-0.5">{user?.role}</p>
-          </div>
-
-          {/* Center: store name, large and prominent */}
-          <div className="text-center">
-            <div className="mb-2 text-4xl">👕</div>
-            <h1 className="text-3xl sm:text-4xl font-black tracking-tight bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-              Kids Poshak
+      {/* Page header — Speed Tech Solutions Professional Compact */}
+      <div className="px-6 py-3.5 border-b bg-white animate-fade-up border-slate-200">
+        <div className="flex items-center justify-between gap-4">
+          {/* Left: Shop branding (compact) */}
+          <div className="min-w-0 flex-shrink-0">
+            <h1 className="text-lg font-bold text-slate-900 leading-tight">
+              Speed Tech Solutions
             </h1>
-            <p className="text-xs text-slate-500 mt-1 font-medium">Children's Fashion & Apparel</p>
+            <p className="text-xs text-slate-500 mt-0.5">Enterprise Security & Surveillance</p>
           </div>
 
-          {/* Right: date */}
-          <div className="text-end">
-            <p className="text-xs text-slate-600">{dateLabel}</p>
+          {/* Right: User info + date */}
+          <div className="flex items-center gap-4 min-w-0">
+            <div className="text-right">
+              <p className="text-sm font-semibold text-slate-900 leading-tight">
+                {greeting()}{user?.first_name ? ` ${user.first_name}` : ""}
+              </p>
+              <p className="text-xs text-slate-500 capitalize mt-0.5">{user?.role} Account</p>
+            </div>
+            <div className="h-10 w-px bg-slate-200 shrink-0" />
+            <div className="text-right min-w-max">
+              <p className="text-sm font-semibold text-slate-900">{dateLabel}</p>
+              <p className="text-xs text-slate-500 mt-0.5">{new Date().toLocaleTimeString(language === "ur" ? "ur-PK" : "en-PK", { hour: "2-digit", minute: "2-digit" })}</p>
+            </div>
           </div>
         </div>
       </div>
@@ -191,8 +192,8 @@ export default function DashboardPage() {
             label={t("dashboard.statTotalProducts")}
             value={totalProducts.toLocaleString()}
             sub={<Link to="/products" className="hover:underline text-primary">{t("dashboard.viewCatalogue")}</Link>}
-            trend={{ value: 12, isPositive: true }}
-            accent="purple"
+            trend={{ value: 8, isPositive: true }}
+            accent="navy"
             to="/products"
           />
           <StatCard
@@ -201,10 +202,10 @@ export default function DashboardPage() {
             value={lowStockProducts.length}
             sub={
               lowStockProducts.length > 0
-                ? <Link to="/products" className="hover:underline text-orange-500">{t("dashboard.viewItems")}</Link>
+                ? <Link to="/products" className="hover:underline text-orange-600">{t("dashboard.viewItems")}</Link>
                 : t("dashboard.allLevelsOk")
             }
-            accent="coral"
+            accent="red"
           />
           <StatCard
             icon={TrendingUp}
@@ -219,8 +220,8 @@ export default function DashboardPage() {
                 ? t("dashboard.discountsGiven", { amount: paiseToRupees(todaySummary.total_discount_paise) })
                 : t("dashboard.noDiscountsToday")
             }
-            trend={{ value: 8, isPositive: true }}
-            accent="mint"
+            trend={{ value: 15, isPositive: true }}
+            accent="teal"
           />
           <StatCard
             icon={Receipt}
@@ -233,56 +234,51 @@ export default function DashboardPage() {
                     .join(" · ")
                 : t("dashboard.noSalesYet")
             }
-            trend={{ value: 5, isPositive: false }}
-            accent="amber"
+            trend={{ value: 3, isPositive: true }}
+            accent="gray"
           />
         </div>
 
         {/* Quick actions */}
         <div className="animate-fade-up-delay-2">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-600 mb-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-700 mb-3">
             {t("dashboard.quickActions")}
           </h2>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             {[
               {
                 to: "/checkout",
                 label: t("dashboard.newSale"),
                 desc: t("dashboard.openCheckout"),
-                emoji: "💳",
-                cls: "quick-action-purple",
+                cls: "quick-action-navy",
               },
               {
                 to: "/products",
                 label: t("dashboard.addStock"),
                 desc: t("dashboard.stockInManage"),
-                emoji: "📦",
-                cls: "quick-action-coral",
+                cls: "quick-action-orange",
               },
               {
                 to: "/audit",
                 label: t("dashboard.reportsLabel"),
                 desc: t("dashboard.salesAndInventory"),
-                emoji: "📊",
-                cls: "quick-action-mint",
+                cls: "quick-action-teal",
               },
               {
                 to: "/shifts",
                 label: t("dashboard.shiftsLabel"),
                 desc: currentShift ? t("dashboard.closeCurrentShift") : t("dashboard.openNewShift"),
-                emoji: "⏱️",
-                cls: "quick-action-orange",
+                cls: "quick-action-gray",
               },
-            ].map(({ to, label, desc, emoji, cls }) => (
+            ].map(({ to, label, desc, cls }) => (
               <Link
                 key={to}
                 to={to}
-                className={`${cls} text-white rounded-xl p-4 transition-all shadow-md hover:shadow-lg hover:scale-105 flex flex-col items-start justify-between min-h-24`}
+                className={`${cls} text-white rounded-lg p-4 transition-all shadow-md hover:shadow-xl hover:scale-105 flex flex-col items-start justify-between min-h-24`}
               >
-                <div className="text-2xl mb-2">{emoji}</div>
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0 flex-1 w-full">
                   <p className="font-bold text-sm leading-tight">{label}</p>
-                  <p className="text-xs opacity-90 truncate">{desc}</p>
+                  <p className="text-xs opacity-90 truncate mt-1">{desc}</p>
                 </div>
               </Link>
             ))}
@@ -294,9 +290,9 @@ export default function DashboardPage() {
 
           {/* Recent sales — takes 2 of 3 columns */}
           <div className="lg:col-span-2 border rounded-xl overflow-hidden shadow-sm bg-white">
-            <div className="px-4 py-3 border-b bg-gradient-to-r from-purple-100/50 to-blue-100/50 flex items-center justify-between">
-              <h2 className="font-bold text-sm text-purple-700">📋 {t("dashboard.recentSales")}</h2>
-              <Link to="/bills" className="text-xs text-purple-600 hover:underline flex items-center gap-1 font-medium">
+            <div className="px-4 py-3 border-b bg-gradient-to-r from-teal-100/40 to-slate-100/40 flex items-center justify-between">
+              <h2 className="font-bold text-sm text-teal-900">{t("dashboard.recentSales")}</h2>
+              <Link to="/bills" className="text-xs text-teal-700 hover:underline flex items-center gap-1 font-medium">
                 {t("dashboard.viewAll")} <ArrowRight className="h-3 w-3" />
               </Link>
             </div>
@@ -311,39 +307,39 @@ export default function DashboardPage() {
                 {recentSales.map((sale) => (
                     <div
                       key={sale.id}
-                      className="px-4 py-3 hover:bg-purple-50/50 transition-colors border-b-0 last:border-b-0"
+                      className="px-4 py-3 hover:bg-teal-50/30 transition-colors border-b-0 last:border-b-0"
                     >
                       <div className="flex items-start justify-between gap-3 mb-2">
                         <div className="flex items-center gap-2 min-w-0 flex-1">
                           <div className="shrink-0">
                             {sale.status === "completed" ? (
-                              <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                              <CheckCircle2 className="h-5 w-5 text-teal-600" />
                             ) : (
-                              <XCircle className="h-5 w-5 text-orange-400" />
+                              <XCircle className="h-5 w-5 text-red-600" />
                             )}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="font-mono text-xs font-bold text-purple-600">{sale.sale_number}</p>
-                            <p className="text-xs text-slate-600 mt-0.5">
+                            <p className="font-mono text-xs font-bold text-teal-700">{sale.sale_number}</p>
+                            <p className="text-xs text-slate-700 mt-0.5">
                               {sale.customer_name || "Walk-in"} • {sale.cashier_name}
                             </p>
                           </div>
                         </div>
                         <Badge
                           variant={sale.status === "completed" ? "default" : "destructive"}
-                          className={sale.status === "completed" ? "bg-emerald-500" : ""}
+                          className={sale.status === "completed" ? "bg-teal-600" : ""}
                         >
                           {sale.status === "completed" ? "✓" : "✗"} {sale.status}
                         </Badge>
                       </div>
                       <div className="flex items-center justify-between">
-                        <div className="text-xs text-slate-600">
+                        <div className="text-xs text-slate-700">
                           {sale.payment?.method?.toUpperCase() || "Cash"} • {formatDt(sale.created_at)}
                         </div>
                         <div className="text-right">
-                          <p className="font-bold text-purple-600">{paiseToRupees(sale.total_paise)}</p>
+                          <p className="font-bold text-teal-700">{paiseToRupees(sale.total_paise)}</p>
                           {sale.discount_paise > 0 && (
-                            <p className="text-xs text-orange-400">-{paiseToRupees(sale.discount_paise)}</p>
+                            <p className="text-xs text-orange-600">-{paiseToRupees(sale.discount_paise)}</p>
                           )}
                         </div>
                       </div>
@@ -354,9 +350,9 @@ export default function DashboardPage() {
           </div>
 
           {/* Shift status widget */}
-          <div className="border rounded-xl overflow-hidden shadow-sm flex flex-col bg-gradient-to-br from-purple-50/50 to-blue-50/50">
-            <div className="px-4 py-3 border-b bg-gradient-to-r from-purple-100/50 to-blue-100/50 flex items-center justify-between">
-              <h2 className="font-semibold text-sm text-purple-700">⏱️ {t("dashboard.shiftStatus")}</h2>
+          <div className="border rounded-xl overflow-hidden shadow-sm flex flex-col bg-gradient-to-br from-teal-50/40 to-slate-50/40">
+            <div className="px-4 py-3 border-b bg-gradient-to-r from-teal-100/40 to-slate-100/40 flex items-center justify-between">
+              <h2 className="font-semibold text-sm text-teal-900">{t("dashboard.shiftStatus")}</h2>
               <Link to="/shifts" className="text-xs text-primary hover:underline">
                 {t("dashboard.manage")}
               </Link>
@@ -370,19 +366,19 @@ export default function DashboardPage() {
                   </div>
                   <div className="space-y-2.5">
                     <div className="text-xs">
-                      <p className="text-slate-600">{t("dashboard.shiftHash")} <span className="font-mono font-semibold text-slate-900">#{currentShift.id}</span></p>
-                      <p className="text-slate-600 mt-1">{t("dashboard.opened")}{" "}
+                      <p className="text-slate-700">{t("dashboard.shiftHash")} <span className="font-mono font-semibold text-slate-900">#{currentShift.id}</span></p>
+                      <p className="text-slate-700 mt-1">{t("dashboard.opened")}{" "}
                         {new Date(currentShift.opened_at).toLocaleTimeString(language === "ur" ? "ur-PK" : "en-PK", {
                           hour: "2-digit", minute: "2-digit",
                         })}
                       </p>
-                      <p className="text-slate-600 mt-1">{t("dashboard.float")} <span className="font-bold text-purple-600">{paiseToRupees(currentShift.opening_float_paise)}</span></p>
+                      <p className="text-slate-700 mt-1">{t("dashboard.float")} <span className="font-bold text-teal-700">{paiseToRupees(currentShift.opening_float_paise)}</span></p>
                     </div>
                     {/* Performance KPI */}
-                    <div className="bg-white/70 rounded-lg p-2.5 space-y-1.5 border border-purple-100">
+                    <div className="bg-white/70 rounded-lg p-2.5 space-y-1.5 border border-teal-100">
                       <div className="flex justify-between text-xs">
-                        <span className="font-medium text-slate-600">Sales Today</span>
-                        <span className="font-bold text-purple-600">₹{(todaySummary?.total_revenue_paise || 0) / 100}</span>
+                        <span className="font-medium text-slate-700">Sales Today</span>
+                        <span className="font-bold text-teal-700">₹{(todaySummary?.total_revenue_paise || 0) / 100}</span>
                       </div>
                       <div className="progress-bar-container">
                         <div className="progress-bar-fill" style={{ width: "65%" }} />
@@ -390,8 +386,8 @@ export default function DashboardPage() {
                     </div>
                   </div>
                   <Link to="/shifts">
-                    <Button size="sm" className="w-full mt-2 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white">
-                      {t("dashboard.closeShift")} 📊
+                    <Button size="sm" className="w-full mt-2 bg-gradient-to-r from-teal-700 to-slate-600 hover:from-teal-800 hover:to-slate-700 text-white">
+                      {t("dashboard.closeShift")}
                     </Button>
                   </Link>
                 </div>
@@ -399,14 +395,14 @@ export default function DashboardPage() {
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
                     <span className="h-2 w-2 rounded-full bg-gray-300" />
-                    <span className="text-sm font-medium text-slate-600">{t("dashboard.noOpenShift")}</span>
+                    <span className="text-sm font-medium text-slate-700">{t("dashboard.noOpenShift")}</span>
                   </div>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-600">
                     {t("dashboard.openShiftHint")}
                   </p>
                   <Link to="/shifts">
-                    <Button size="sm" className="w-full mt-2 bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white">
-                      {t("dashboard.openShift")} ▶
+                    <Button size="sm" className="w-full mt-2 bg-gradient-to-r from-teal-700 to-slate-600 hover:from-teal-800 hover:to-slate-700 text-white">
+                      {t("dashboard.openShift")}
                     </Button>
                   </Link>
                 </div>
@@ -418,14 +414,14 @@ export default function DashboardPage() {
         {/* Low stock alert */}
         {lowStockProducts.length > 0 && (
           <div className="border rounded-xl overflow-hidden shadow-sm low-stock-critical">
-            <div className="px-4 py-3 border-b bg-gradient-to-r from-orange-100/50 to-coral-100/50 flex items-center justify-between">
+            <div className="px-4 py-3 border-b bg-gradient-to-r from-red-100/50 to-orange-100/40 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-orange-500 animate-pulse" />
-                <h2 className="font-bold text-sm text-orange-700">⚠️ {t("dashboard.lowStockAlert")}</h2>
-                <Badge variant="destructive" className="bg-orange-500">{lowStockProducts.length}</Badge>
+                <AlertTriangle className="h-5 w-5 text-red-600 animate-pulse" />
+                <h2 className="font-bold text-sm text-red-800">{t("dashboard.lowStockAlert")}</h2>
+                <Badge variant="destructive" className="bg-red-600">{lowStockProducts.length}</Badge>
               </div>
-              <Button variant="outline" size="sm" asChild className="border-orange-300 hover:bg-orange-50">
-                <Link to="/products" className="text-orange-600 font-medium">{t("dashboard.manageStock")}</Link>
+              <Button variant="outline" size="sm" asChild className="border-red-300 hover:bg-red-50">
+                <Link to="/products" className="text-red-700 font-medium">{t("dashboard.manageStock")}</Link>
               </Button>
             </div>
             <div className="divide-y">
@@ -438,14 +434,14 @@ export default function DashboardPage() {
                 return (
                   <div
                     key={p.id}
-                    className={`px-4 py-3 text-sm hover:bg-orange-50/40 transition-colors ${isCritical ? 'bg-orange-50/20' : 'bg-emerald-50/10'}`}
+                    className={`px-4 py-3 text-sm hover:bg-red-50/40 transition-colors ${isCritical ? 'bg-red-50/20' : 'bg-orange-50/10'}`}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <div className="min-w-0">
-                        <span className="font-mono text-xs text-slate-500 me-2">{p.sku}</span>
+                        <span className="font-mono text-xs text-slate-600 me-2">{p.sku}</span>
                         <span className="font-semibold text-slate-900">{p.name}</span>
                       </div>
-                      <Badge className={isCritical ? "bg-orange-500" : "bg-emerald-500"}>
+                      <Badge className={isCritical ? "bg-red-600" : "bg-orange-500"}>
                         {isCritical ? "CRITICAL" : "LOW"}
                       </Badge>
                     </div>
@@ -453,10 +449,10 @@ export default function DashboardPage() {
                       <div className="progress-bar-fill" style={{ width: `${stockPercent}%` }} />
                     </div>
                     <div className="flex justify-between text-xs">
-                      <span className="text-slate-600">
+                      <span className="text-slate-700">
                         {stockQty} {p.unit} / {minThreshold} {t("dashboard.min")}
                       </span>
-                      <span className={isCritical ? "text-orange-600 font-bold" : "text-emerald-600 font-bold"}>
+                      <span className={isCritical ? "text-red-600 font-bold" : "text-orange-600 font-bold"}>
                         {stockPercent.toFixed(0)}%
                       </span>
                     </div>
@@ -476,9 +472,9 @@ export default function DashboardPage() {
       </div>
 
       {/* Page footer */}
-      <footer className="px-6 py-3 border-t text-center text-xs text-slate-500 bg-slate-50">
+      <footer className="px-6 py-3 border-t text-center text-xs text-slate-600 bg-slate-50">
         {t("dashboard.footerBuiltBy")}{" "}
-        <span className="font-semibold text-slate-700">Neuroqaa.ai</span>
+        <span className="font-semibold text-slate-800">Neuroqaa.ai</span>
       </footer>
     </div>
   );
