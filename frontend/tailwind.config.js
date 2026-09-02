@@ -43,6 +43,15 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        speedtech: {
+          teal: "hsl(var(--primary-teal))",
+          "teal-light": "hsl(var(--primary-teal-light))",
+          dark: "hsl(var(--secondary-dark))",
+          "bright-teal": "hsl(var(--accent-bright-teal))",
+          orange: "hsl(var(--accent-orange))",
+          red: "hsl(var(--accent-red))",
+          sidebar: "hsl(var(--sidebar-dark))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
