@@ -219,15 +219,46 @@ export default function CheckoutPage() {
   }, []);
 
   const addSerialToItem = useCallback((idx: number, serial: string, warranty_months?: number | null) => {
-    if (!serial.trim()) return;
+    const value = serial.trim();
+    if (!value) return;
+
+    let rejected: string | null = null;
+
     setCartItems((prev) => {
+      const item = prev[idx];
+      if (!item) return prev;
+
+      // A serial must be unique across the WHOLE cart, not just this line.
+      // The DB enforces this too; catching it here keeps the cashier from
+      // losing the cart to a 400 at checkout.
+      const clash = prev.some((line) =>
+        (line.serials || []).some((s) => s.serial.toLowerCase() === value.toLowerCase())
+      );
+      if (clash) {
+        rejected = `Serial ${value} is already on this bill.`;
+        return prev;
+      }
+
+      // Never capture more serials than units being sold.
+      const maxSerials = Number(item.qty) || 0;
+      if (maxSerials > 0 && (item.serials || []).length >= maxSerials) {
+        rejected = `Only ${maxSerials} serial${maxSerials === 1 ? "" : "s"} can be added for ${maxSerials} unit${maxSerials === 1 ? "" : "s"}.`;
+        return prev;
+      }
+
       const updated = [...prev];
-      const item = updated[idx];
-      const newSerials = [...(item.serials || [])];
-      newSerials.push({ serial: serial.trim(), warranty_months: warranty_months || undefined });
-      updated[idx] = { ...item, serials: newSerials };
+      updated[idx] = {
+        ...item,
+        serials: [...(item.serials || []), { serial: value, warranty_months: warranty_months || undefined }],
+      };
       return updated;
     });
+
+    if (rejected) {
+      toast({ title: "Serial not added", description: rejected, variant: "error" });
+      return;
+    }
+
     setSerialInput("");
     setWarrantyMonthsInput("");
   }, []);
@@ -351,9 +382,22 @@ export default function CheckoutPage() {
       });
     },
     onError: (err: unknown) => {
-      const detail =
-        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
-        ?? t("checkout.saleFailedGeneric");
+      // DRF returns {"detail": "..."} for view-level errors but
+      // {"field": ["msg"]} for serializer validation (e.g. a credit sale with
+      // no customer). Reading only `detail` showed a useless generic message.
+      const data = (err as { response?: { data?: unknown } })?.response?.data;
+      let detail = t("checkout.saleFailedGeneric");
+      if (typeof data === "string") {
+        detail = data;
+      } else if (data && typeof data === "object") {
+        const obj = data as Record<string, unknown>;
+        if (typeof obj.detail === "string") {
+          detail = obj.detail;
+        } else {
+          const first = Object.values(obj).flat().find((v) => typeof v === "string");
+          if (typeof first === "string") detail = first;
+        }
+      }
       setSaleError(detail);
       toast({
         title: "Sale failed",

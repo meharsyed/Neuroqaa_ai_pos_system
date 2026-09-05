@@ -183,11 +183,13 @@ def create_sale(
             if sale.customer:
                 sale.customer.outstanding_paise += total_paise
                 sale.customer.save(update_fields=["outstanding_paise"])
-            # Create a Payment record for audit trail (without linking to sale)
+            # Link the Payment to the sale. With sale=None the receipt printed
+            # "cash", every payment__method="credit" filter matched nothing, and
+            # the aging report was dead. Nothing is tendered on a credit sale.
             Payment.objects.create(
-                sale=None,
+                sale=sale,
                 method=payment_method,
-                amount_tendered_paise=total_paise,
+                amount_tendered_paise=0,
                 change_paise=0,
             )
         else:

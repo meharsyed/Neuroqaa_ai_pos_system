@@ -172,11 +172,15 @@ def _build_story(ctx: ReceiptContext, page_width: float):
 
     totals_data.append(["TOTAL:", f"Rs {format_money(ctx.total_paise, include_symbol=False)}"])
 
-    if ctx.tendered_paise:
-        totals_data.append([f"Paid ({(ctx.payment_method or 'CASH').upper()}):", format_money(ctx.tendered_paise, include_symbol=False)])
-
-    if ctx.change_paise:
-        totals_data.append(["Change:", format_money(ctx.change_paise, include_symbol=False)])
+    if (ctx.payment_method or "").lower() == "credit":
+        # Nothing tendered on a khata sale — state the amount owed instead.
+        totals_data.append(["Paid now:", "0.00"])
+        totals_data.append(["BALANCE DUE (Khata):", format_money(ctx.total_paise, include_symbol=False)])
+    else:
+        if ctx.tendered_paise:
+            totals_data.append([f"Paid ({(ctx.payment_method or 'CASH').upper()}):", format_money(ctx.tendered_paise, include_symbol=False)])
+        if ctx.change_paise:
+            totals_data.append(["Change:", format_money(ctx.change_paise, include_symbol=False)])
 
     total_idx = next(i for i, r in enumerate(totals_data) if r[0] == "TOTAL:")
     totals_table = Table(totals_data, colWidths=[page_width * 0.46, page_width * 0.54])
@@ -191,7 +195,10 @@ def _build_story(ctx: ReceiptContext, page_width: float):
         ("FONTSIZE", (0, total_idx), (-1, total_idx), 10.5),
         ("TOPPADDING", (0, total_idx), (-1, total_idx), 3.5),
         ("BOTTOMPADDING", (0, total_idx), (-1, total_idx), 3.5),
-    ]))
+    ] + ([
+        ("FONTNAME", (0, len(totals_data) - 1), (-1, len(totals_data) - 1), "Helvetica-Bold"),
+        ("LINEBELOW", (0, len(totals_data) - 1), (-1, len(totals_data) - 1), 0.8, colors.black),
+    ] if (ctx.payment_method or "").lower() == "credit" else [])))
     story.append(totals_table)
     story.append(Spacer(1, 3 * mm_unit))
 
@@ -240,15 +247,19 @@ def _measure_story_height(story, page_width: float) -> float:
 
 
 def _get_logo_image(width: float):
-    """Try to load logo image, return None if missing"""
-    try:
-        from django.conf import settings
-        import os
-        logo_path = os.path.join(settings.BASE_DIR, "apps", "sales", "receipts", "assets", "logo-thermal.png")
-        if os.path.exists(logo_path):
-            return Image(logo_path, width=width, height=width, kind="proportional")
-    except:
-        pass
+    """Load the thermal logo if present. Resolved relative to this file, not
+    settings.BASE_DIR, so the renderer stays usable outside a Django context."""
+    import os
+    here = os.path.dirname(os.path.abspath(__file__))
+    for name in ("logo-thermal.png", "logo-invoice.png"):
+        path = os.path.join(here, "assets", name)
+        if os.path.exists(path):
+            try:
+                img = Image(path, width=width, height=width, kind="proportional")
+                img.hAlign = "CENTER"
+                return img
+            except Exception:
+                return None
     return None
 
 

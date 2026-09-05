@@ -35,7 +35,7 @@ def daily_summary(report_date: date) -> dict:
         .order_by("payment__method")
     )
     payment_breakdown = {
-        row["payment__method"]: {
+        (row["payment__method"] or "credit"): {
             "total_paise": row["total_paise"],
             "count": row["count"],
         }
@@ -161,7 +161,7 @@ def audit_report(start: date, end: date, detailed: bool = False) -> dict:
         .order_by("payment__method")
     )
     payment_breakdown = {
-        row["payment__method"]: {"count": row["count"], "total_paise": row["total_paise"]}
+        (row["payment__method"] or "credit"): {"count": row["count"], "total_paise": row["total_paise"]}
         for row in payment_rows
     }
 
@@ -416,7 +416,7 @@ def audit_report_pdf(data: dict, shop_name: str = "POS", shop_address: str = "",
         pay_rows = [pay_header]
         for method, v in data["payment_breakdown"].items():
             pay_rows.append([
-                Paragraph(method.upper(), ps("pm", fontSize=9)),
+                Paragraph((method or "credit").upper(), ps("pm", fontSize=9)),
                 Paragraph(str(v["count"]), ps("pc", fontSize=9, alignment=TA_RIGHT)),
                 Paragraph(rs(v["total_paise"]), ps("pv", fontSize=9, alignment=TA_RIGHT)),
             ])

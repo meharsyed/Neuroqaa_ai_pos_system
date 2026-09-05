@@ -27,11 +27,10 @@ function formatDt(iso: string) {
 
 type ReturnQtys = Record<number, string>; // product_id → qty string
 
-type ReturnStep = "search" | "select" | "reason" | "confirm" | "complete";
+type ReturnStage = "search" | "select" | "confirm";
 
 export default function ReturnsPage() {
   const { toast } = useToast();
-  const [step, setStep] = useState<ReturnStep>("search");
   const [searchInput, setSearchInput]   = useState("");
   const [saleQuery, setSaleQuery]       = useState("");
   const [returnQtys, setReturnQtys]     = useState<ReturnQtys>({});
@@ -56,19 +55,6 @@ export default function ReturnsPage() {
     setReturnQtys({});
     setNotes("");
     setCompleted(null);
-    // Advance to select step after finding sale
-    if (sale) {
-      setStep("select");
-    }
-  }
-
-  function handleSelectNext() {
-    if (returnItems.length === 0) return;
-    setStep("reason");
-  }
-
-  function handleReasonNext() {
-    setStep("confirm");
   }
 
   function setQty(productId: number, value: string) {
@@ -89,13 +75,17 @@ export default function ReturnsPage() {
     return sum + Math.round(parseFloat(ri.qty) * item.unit_price_paise);
   }, 0);
 
+  // Derived, not stored: the indicator now follows the actual state of the
+  // form instead of a step variable that was never advanced.
+  const currentStage: ReturnStage =
+    !sale ? "search" : returnTotal > 0 ? "confirm" : "select";
+
   const { mutate: submitReturn, isPending: isSubmitting, error: submitError } = useMutation({
     mutationFn: () => salesApi.processReturn(sale!.id, returnItems, notes),
     onSuccess: (result) => {
-      toast({ title: "Return processed", description: `Return amount: ${(returnTotal / 100).toLocaleString("en-PK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Rs` });
+      toast({ title: "Return processed", description: `Return amount: Rs ${(returnTotal / 100).toLocaleString("en-PK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` });
       setCompleted(result);
       setReturnQtys({});
-      setStep("complete");
     },
   });
 
@@ -155,14 +145,14 @@ export default function ReturnsPage() {
       <div className="max-w-3xl mx-auto w-full mb-6">
         <div className="flex items-center justify-between">
           {[
-            { id: "search", label: "Search Bill" },
+            { id: "search", label: "Find Bill" },
             { id: "select", label: "Select Items" },
-            { id: "reason", label: "Enter Reason" },
-            { id: "confirm", label: "Confirm" },
+            { id: "confirm", label: "Confirm Return" },
           ].map((stepDef, idx, arr) => {
-            const stepId = stepDef.id as ReturnStep;
-            const stepOrder = ["search", "select", "reason", "confirm"].indexOf(stepId);
-            const currentOrder = ["search", "select", "reason", "confirm"].indexOf(step);
+            const stepId = stepDef.id as ReturnStage;
+            const order = ["search", "select", "confirm"];
+            const stepOrder = order.indexOf(stepId);
+            const currentOrder = order.indexOf(currentStage);
             const isActive = stepOrder === currentOrder;
             const isCompleted = stepOrder < currentOrder;
 
@@ -305,7 +295,7 @@ export default function ReturnsPage() {
                         </div>
                         <div className="text-right w-24">
                           <p className="text-xs text-muted-foreground">Return value</p>
-                          <p className={`font-mono text-sm font-semibold ${parsedQty > 0 ? "text-blue-600" : "text-muted-foreground/30"}`}>
+                          <p className={`font-mono text-sm font-semibold ${parsedQty > 0 ? "text-foreground" : "text-muted-foreground/30"}`}>
                             {parsedQty > 0 ? <Money paise={lineReturn} /> : "—"}
                           </p>
                         </div>
@@ -317,9 +307,9 @@ export default function ReturnsPage() {
 
               {/* Total return amount */}
               {returnTotal > 0 && (
-                <div className="px-5 py-3 border-t bg-blue-50/50 flex justify-between items-center">
+                <div className="px-5 py-3 border-t bg-accent-soft flex justify-between items-center">
                   <span className="font-semibold text-sm">Total Return Amount</span>
-                  <span className="font-bold text-xl font-mono text-blue-700">
+                  <span className="font-bold text-xl tabular-nums text-primary">
                     <Money paise={returnTotal} />
                   </span>
                 </div>
@@ -351,7 +341,7 @@ export default function ReturnsPage() {
                 <Button
                   onClick={() => submitReturn()}
                   disabled={isSubmitting || returnItems.length === 0}
-                  className="w-full gap-2 bg-blue-600 hover:bg-blue-700"
+                  className="w-full gap-2"
                   size="lg"
                 >
                   {isSubmitting ? (

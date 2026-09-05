@@ -5,7 +5,6 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
-  Zap,
   ArrowRight,
   CheckCircle2,
 } from "lucide-react";
@@ -77,12 +76,12 @@ export default function LoginPage() {
         {/* Top: logo mark */}
         <div className="relative z-10 animate-fade-up">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl glass flex items-center justify-center animate-glow-pulse">
-              <Zap className="h-5 w-5 text-white" />
+            <div className="h-11 w-11 rounded-xl glass flex items-center justify-center animate-glow-pulse">
+              <img src="/brand/logo-mark-mono-light.svg" alt="" className="h-6 w-6" />
             </div>
             <div>
               <span className="text-white font-bold text-lg leading-tight block">
-                Neuroqaa POS
+                Speed Tech Solutions
               </span>
               <span className="text-white/50 text-xs">{t("login.pointOfSaleSystem")}</span>
             </div>
@@ -128,10 +127,10 @@ export default function LoginPage() {
 
           {/* Mobile-only logo */}
           <div className="lg:hidden flex items-center gap-2.5 justify-center mb-8">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shadow-lg shadow-primary/30">
-              <Zap className="h-4 w-4 text-white" />
+            <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center shadow-lg shadow-primary/30">
+              <img src="/brand/logo-mark-mono-light.svg" alt="" className="h-5 w-5" />
             </div>
-            <span className="font-bold text-lg">Neuroqaa POS</span>
+            <span className="font-bold text-lg">Speed Tech Solutions</span>
           </div>
 
           {/* Heading */}

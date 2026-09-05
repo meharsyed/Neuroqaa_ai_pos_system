@@ -290,11 +290,20 @@ def _notes_and_totals(ctx, W, d):
                  Paragraph("Rs " + format_money_simple(ctx.total_paise), gv)])
 
     method = (ctx.payment_method or "cash").replace("_", " ").title()
-    rows.append([Paragraph(f"Paid ({method})", tl),
-                 Paragraph(format_money_simple(ctx.tendered_paise), tv)])
-    if ctx.change_paise:
-        rows.append([Paragraph("Change", tl),
-                     Paragraph(format_money_simple(ctx.change_paise), tv)])
+    if (ctx.payment_method or "").lower() == "credit":
+        # Nothing was tendered — say so, and state the amount now owed.
+        due = _s("due", fontName="Helvetica-Bold", fontSize=d["base"],
+                 textColor=THEME.WARNING, leading=d["base"] + 3)
+        due_r = _s("dur", parent=due, alignment=TA_RIGHT)
+        rows.append([Paragraph("Paid now", tl), Paragraph("0.00", tv)])
+        rows.append([Paragraph("BALANCE DUE (Khata)", due),
+                     Paragraph(format_money_simple(ctx.total_paise), due_r)])
+    else:
+        rows.append([Paragraph(f"Paid ({method})", tl),
+                     Paragraph(format_money_simple(ctx.tendered_paise), tv)])
+        if ctx.change_paise:
+            rows.append([Paragraph("Change", tl),
+                         Paragraph(format_money_simple(ctx.change_paise), tv)])
 
     tot_w = W * 0.42
     totals = Table(rows, colWidths=[tot_w * 0.52, tot_w * 0.48], hAlign="RIGHT")

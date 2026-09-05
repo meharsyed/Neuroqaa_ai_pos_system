@@ -2,6 +2,7 @@ import logging
 from datetime import date
 
 import django_filters
+from django.db import IntegrityError
 from django.http import HttpResponse
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.utils import extend_schema
@@ -95,6 +96,14 @@ class SaleViewSet(
             )
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except IntegrityError:
+            # Almost always a duplicate serial number. Without this the whole
+            # transaction rolls back as a 500 and the cashier loses the cart.
+            logger.warning("Sale create IntegrityError", exc_info=True)
+            return Response(
+                {"detail": "Duplicate serial number - each serial can only be sold once."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
         sale_data = (
             Sale.objects.select_related("cashier", "payment", "voided_by", "customer")

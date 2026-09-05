@@ -23,7 +23,7 @@ export default function KhataPage() {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentNotes, setPaymentNotes] = useState("");
 
-  const { data: report, isLoading } = useQuery({
+  const { data: report, isLoading, isError, refetch } = useQuery({
     queryKey: ["khata-report"],
     queryFn: customersApi.khataReport,
     refetchInterval: 30000,
@@ -83,7 +83,26 @@ export default function KhataPage() {
     );
   }
 
-  if (!report || (report.current.length === 0 && report.days_30.length === 0 && report.days_60.length === 0 && report.days_90_plus.length === 0)) {
+  // A failed request must never render as "all customers are paid up" —
+  // on a receivables screen that reports the exact opposite of the truth.
+  if (isError || !report) {
+    return (
+      <PageContainer>
+        <PageHeader
+          title="Khata / Customer Credit"
+          subtitle="Manage outstanding customer balances"
+        />
+        <EmptyState
+          icon={AlertCircle}
+          title="Could not load the khata report"
+          description="The balances could not be fetched, so nothing is shown here. This does not mean customers have no outstanding balance."
+          action={<Button onClick={() => refetch()}>Retry</Button>}
+        />
+      </PageContainer>
+    );
+  }
+
+  if (report.current.length === 0 && report.days_30.length === 0 && report.days_60.length === 0 && report.days_90_plus.length === 0) {
     return (
       <PageContainer>
         <PageHeader

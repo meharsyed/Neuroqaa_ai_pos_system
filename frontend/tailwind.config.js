@@ -11,6 +11,7 @@ export default {
     extend: {
       colors: {
         border: "hsl(var(--border))",
+        "border-strong": "hsl(var(--border-strong))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
@@ -34,6 +35,7 @@ export default {
         accent: {
           DEFAULT: "hsl(var(--accent))",
           foreground: "hsl(var(--accent-foreground))",
+          soft: "hsl(var(--accent-soft))",
         },
         popover: {
           DEFAULT: "hsl(var(--popover))",
@@ -87,6 +89,7 @@ export default {
           muted: "hsl(var(--chrome-muted-foreground))",
           border: "hsl(var(--chrome-border))",
           hover: "hsl(var(--chrome-hover))",
+          active: "hsl(var(--chrome-active))",
         },
         /* Semantic colors */
         success: {

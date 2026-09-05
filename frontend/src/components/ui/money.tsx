@@ -5,9 +5,11 @@ interface MoneyProps extends React.HTMLAttributes<HTMLSpanElement> {
   paise: number;
   compact?: boolean;
   sign?: boolean;
+  /** "always" (default) = 1,200.00 · "auto" = drop .00 on whole rupees */
+  decimals?: "always" | "auto";
 }
 
-export function Money({ paise, compact, sign, className }: MoneyProps) {
+export function Money({ paise, compact, sign, decimals = "always", className }: MoneyProps) {
   const rs = paise / 100;
 
   let formatted: string;
@@ -22,9 +24,10 @@ export function Money({ paise, compact, sign, className }: MoneyProps) {
     }
   } else {
     // 147911.40 → Rs 147,911.40
+    const whole = decimals === "auto" && Number.isInteger(rs);
     formatted = `Rs ${rs.toLocaleString("en-PK", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
+      minimumFractionDigits: whole ? 0 : 2,
+      maximumFractionDigits: whole ? 0 : 2,
     })}`;
   }
 
@@ -40,7 +43,7 @@ export function Money({ paise, compact, sign, className }: MoneyProps) {
   }
 
   return (
-    <span className={cn("tabular-nums font-mono text-foreground", className)}>
+    <span className={cn("tabular-nums", className)}>
       {formatted}
     </span>
   );

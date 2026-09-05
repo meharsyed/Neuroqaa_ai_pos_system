@@ -119,6 +119,15 @@ class CreateSaleSerializer(serializers.Serializer):
             raise serializers.ValidationError("A sale must have at least one item.")
         return value
 
+    def validate(self, attrs):
+        # A credit sale with no customer completes, deducts stock and books
+        # revenue while billing nobody. Refuse it.
+        if attrs.get("payment_method") == "credit" and not attrs.get("customer_id"):
+            raise serializers.ValidationError(
+                {"customer_id": "A credit (khata) sale requires a customer."}
+            )
+        return attrs
+
 
 # ── Return serializers ────────────────────────────────────────────────────────
 
