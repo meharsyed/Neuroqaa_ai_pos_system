@@ -1,10 +1,16 @@
-export type PaymentMethod = "cash" | "card" | "upi";
+export type PaymentMethod = "cash" | "card" | "upi" | "bank_transfer" | "credit";
+
+export interface SerialInput {
+  serial: string;
+  warranty_months?: number | null;
+}
 
 export interface SaleItemInput {
   product_id: number;
   qty: string;
   unit_price_paise: number;
   discount_paise?: number;
+  serials?: SerialInput[];
 }
 
 export interface CreateSalePayload {
@@ -17,6 +23,12 @@ export interface CreateSalePayload {
   customer_id?: number | null;
 }
 
+export interface SaleItemSerial {
+  id: number;
+  serial: string;
+  warranty_months?: number | null;
+}
+
 export interface SaleItemRecord {
   id: number;
   product: number;
@@ -27,6 +39,7 @@ export interface SaleItemRecord {
   unit_price_paise: number;
   discount_paise: number;
   subtotal_paise: number;
+  serials?: SaleItemSerial[];
 }
 
 export interface PaymentRecord {
@@ -68,4 +81,5 @@ export interface CartItem {
   unit_price_paise: number;
   discount_pct: number;   // 0–100, entered by user; drives discount_paise
   discount_paise: number; // derived: round(qty × unit_price_paise × discount_pct / 100)
+  serials?: SerialInput[]; // optional per-item serial numbers
 }

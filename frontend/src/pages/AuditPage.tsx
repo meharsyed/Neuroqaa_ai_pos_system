@@ -1,3 +1,5 @@
+import { PageContainer } from "@/layouts/components/PageContainer";
+import { PageHeader } from "@/layouts/components/PageHeader";
 import { useRef, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -6,8 +8,9 @@ import {
   FileSpreadsheet, ListChecks, LayoutList,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { paiseToRupees } from "@/lib/catalog";
+import { Money } from "@/components/ui/money";
+import { DatePicker } from "@/components/ui/date-picker";
+import { DateTime } from "@/components/ui/date-display";
 import { reportsApi, downloadAuditPdf, downloadAuditCsv } from "@/lib/reports";
 import { useAuthStore } from "@/store/authStore";
 import type { AuditReport } from "@/types/config";
@@ -98,21 +101,21 @@ function MetricCard({
   label: string;
   value: React.ReactNode;
   sub?: React.ReactNode;
-  accent?: "blue" | "green" | "red" | "amber" | "purple";
+  accent?: "blue" | "green" | "red" | "amber" | "danger";
 }) {
   const border = {
     blue:   "border-l-blue-500 bg-blue-50/40",
-    green:  "border-l-emerald-500 bg-emerald-50/40",
+    green:  "border-l-teal-500 bg-teal-50/40",
     red:    "border-l-red-500 bg-red-50/40",
     amber:  "border-l-amber-500 bg-amber-50/40",
-    purple: "border-l-purple-500 bg-purple-50/40",
+    danger: "border-l-danger-500 bg-danger-50/40",
   };
   const icon_color = {
     blue:   "text-blue-500",
-    green:  "text-emerald-500",
+    green:  "text-teal-500",
     red:    "text-red-500",
     amber:  "text-amber-500",
-    purple: "text-purple-500",
+    danger: "text-danger-500",
   };
   return (
     <div className={`border rounded-xl p-4 border-l-4 shadow-sm ${accent ? border[accent] : "border-l-border"}`}>
@@ -187,20 +190,12 @@ export default function AuditPage() {
   const marginPositive = (data?.gross_margin_pct ?? 0) >= 0;
 
   return (
-    <div className="min-h-full flex flex-col">
-      {/* Header */}
-      <div className="px-6 pt-6 pb-4 border-b bg-gradient-to-r from-primary/5 to-transparent">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <FileBarChart className="h-5 w-5 text-primary" />
-            <div>
-              <h1 className="text-xl font-bold">Audit Reports</h1>
-              <p className="text-sm text-muted-foreground">
-                Profit &amp; Loss analysis with COGS breakdown — Owner/Manager only
-              </p>
-            </div>
-          </div>
-          {data && (
+    <PageContainer>
+      <PageHeader
+        title="Audit Reports"
+        subtitle="Profit & Loss analysis with COGS breakdown — Owner/Manager only"
+        actions={
+          data && (
             <DropdownMenu
               label={downloadingCsv || downloadingPdf ? "Preparing…" : "Download"}
               icon={downloadingCsv || downloadingPdf ? Loader2 : Download}
@@ -220,11 +215,11 @@ export default function AuditPage() {
                 },
               ]}
             />
-          )}
-        </div>
-      </div>
+          )
+        }
+      />
 
-      <div className="flex-1 p-6 space-y-6">
+      <div className="space-y-6">
 
         {/* Date range selector */}
         <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-muted/20 px-5 py-4">
@@ -232,10 +227,9 @@ export default function AuditPage() {
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide block mb-1.5">
               From
             </label>
-            <Input
-              type="date"
+            <DatePicker
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={setStartDate}
               className="w-40"
             />
           </div>
@@ -243,10 +237,9 @@ export default function AuditPage() {
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide block mb-1.5">
               To
             </label>
-            <Input
-              type="date"
+            <DatePicker
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
+              onChange={setEndDate}
               className="w-40"
             />
           </div>
@@ -318,7 +311,7 @@ export default function AuditPage() {
                 <span className="font-semibold text-foreground">{data.period_end}</span>
               </span>
               <span className="text-xs text-muted-foreground">
-                Generated {new Date(data.generated_at).toLocaleString("en-PK")}
+                Generated <DateTime value={data.generated_at} />
               </span>
             </div>
 
@@ -334,21 +327,21 @@ export default function AuditPage() {
               <MetricCard
                 icon={Wallet}
                 label="Revenue"
-                value={paiseToRupees(data.total_revenue_paise)}
-                sub={`Discounts: ${paiseToRupees(data.total_discount_paise)}`}
+                value={<Money paise={data.total_revenue_paise} />}
+                sub={<>Discounts: <Money paise={data.total_discount_paise} /></>}
                 accent="blue"
               />
               <MetricCard
                 icon={ShoppingBag}
                 label="COGS"
-                value={paiseToRupees(data.total_cogs_paise)}
+                value={<Money paise={data.total_cogs_paise} />}
                 sub={`${pct(data.total_cogs_paise, data.total_revenue_paise)} of revenue`}
                 accent="amber"
               />
               <MetricCard
                 icon={marginPositive ? TrendingUp : TrendingDown}
                 label="Gross Profit"
-                value={paiseToRupees(data.gross_profit_paise)}
+                value={<Money paise={data.gross_profit_paise} />}
                 sub={`After COGS deduction`}
                 accent={marginPositive ? "green" : "red"}
               />
@@ -371,13 +364,13 @@ export default function AuditPage() {
                 </div>
                 <div className="divide-y text-sm">
                   {[
-                    { label: "Gross Sales (before discounts)", value: paiseToRupees(data.total_subtotal_paise), sub: false },
-                    { label: "Discounts Given", value: `− ${paiseToRupees(data.total_discount_paise)}`, sub: true, cls: "text-amber-600" },
-                    { label: "Tax Collected", value: `+ ${paiseToRupees(data.total_tax_paise)}`, sub: true, cls: "text-blue-600" },
-                    { label: "Net Revenue", value: paiseToRupees(data.total_revenue_paise), bold: true },
-                    { label: "Cost of Goods Sold", value: `− ${paiseToRupees(data.total_cogs_paise)}`, sub: true, cls: "text-muted-foreground" },
-                    { label: "Gross Profit", value: paiseToRupees(data.gross_profit_paise), bold: true, cls: marginPositive ? "text-emerald-600" : "text-red-600" },
-                    { label: "Gross Margin %", value: `${data.gross_margin_pct}%`, bold: true, cls: marginPositive ? "text-emerald-600" : "text-red-600" },
+                    { label: "Gross Sales (before discounts)", value: <Money paise={data.total_subtotal_paise} />, sub: false },
+                    { label: "Discounts Given", value: <>− <Money paise={data.total_discount_paise} /></>, sub: true, cls: "text-amber-600" },
+                    { label: "Tax Collected", value: <>+ <Money paise={data.total_tax_paise} /></>, sub: true, cls: "text-blue-600" },
+                    { label: "Net Revenue", value: <Money paise={data.total_revenue_paise} />, bold: true },
+                    { label: "Cost of Goods Sold", value: <>− <Money paise={data.total_cogs_paise} /></>, sub: true, cls: "text-muted-foreground" },
+                    { label: "Gross Profit", value: <Money paise={data.gross_profit_paise} />, bold: true, cls: marginPositive ? "text-teal-600" : "text-red-600" },
+                    { label: "Gross Margin %", value: `${data.gross_margin_pct}%`, bold: true, cls: marginPositive ? "text-teal-600" : "text-red-600" },
                   ].map(({ label, value, sub, bold, cls }) => (
                     <div key={label} className={`flex justify-between px-4 py-2.5 ${sub ? "bg-muted/10" : ""}`}>
                       <span className={`${bold ? "font-bold" : "text-muted-foreground"} ${cls ?? ""}`}>{label}</span>
@@ -405,7 +398,7 @@ export default function AuditPage() {
                           <span className="text-xs text-muted-foreground ml-2">{v.count} transaction{v.count !== 1 ? "s" : ""}</span>
                         </div>
                         <div className="text-right">
-                          <p className="font-mono font-semibold">{paiseToRupees(v.total_paise)}</p>
+                          <p className="font-mono font-semibold"><Money paise={v.total_paise} /></p>
                           <p className="text-xs text-muted-foreground">
                             {pct(v.total_paise, data.total_revenue_paise)} of revenue
                           </p>
@@ -445,13 +438,13 @@ export default function AuditPage() {
                               <p className="text-[10px] text-muted-foreground font-mono">{p.sku}</p>
                             </td>
                             <td className="px-4 py-2.5 text-right font-mono text-xs">{p.qty_sold}</td>
-                            <td className="px-4 py-2.5 text-right font-mono">{paiseToRupees(p.revenue_paise)}</td>
-                            <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{paiseToRupees(p.cogs_paise)}</td>
-                            <td className={`px-4 py-2.5 text-right font-mono font-semibold ${pos ? "text-emerald-600" : "text-red-600"}`}>
-                              {paiseToRupees(p.gross_profit_paise)}
+                            <td className="px-4 py-2.5 text-right font-mono"><Money paise={p.revenue_paise} /></td>
+                            <td className="px-4 py-2.5 text-right font-mono text-muted-foreground"><Money paise={p.cogs_paise} /></td>
+                            <td className={`px-4 py-2.5 text-right font-mono font-semibold ${pos ? "text-teal-600" : "text-red-600"}`}>
+                              <Money paise={p.gross_profit_paise} />
                             </td>
                             <td className="px-4 py-2.5 text-right">
-                              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${pos ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
+                              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${pos ? "bg-teal-100 text-teal-700" : "bg-red-100 text-red-700"}`}>
                                 {p.gross_margin_pct}%
                               </span>
                             </td>
@@ -486,10 +479,10 @@ export default function AuditPage() {
                         <td className="px-4 py-2.5 font-mono text-xs font-medium">{row.date}</td>
                         <td className="px-4 py-2.5 text-right">{row.count}</td>
                         <td className="px-4 py-2.5 text-right font-mono text-xs text-amber-600">
-                          {row.discount_paise > 0 ? `− ${paiseToRupees(row.discount_paise)}` : "—"}
+                          {row.discount_paise > 0 ? <>− <Money paise={row.discount_paise} /></> : "—"}
                         </td>
                         <td className="px-4 py-2.5 text-right font-mono font-semibold">
-                          {paiseToRupees(row.revenue_paise)}
+                          <Money paise={row.revenue_paise} />
                         </td>
                         <td className="px-4 py-2.5 text-right">
                           <div className="flex items-center justify-end gap-2">
@@ -552,8 +545,8 @@ export default function AuditPage() {
                                         <span className="text-muted-foreground font-mono text-[10px]">({item.sku})</span>
                                       </td>
                                       <td className="px-3 py-1.5 text-end font-mono">{item.qty}</td>
-                                      <td className="px-3 py-1.5 text-end font-mono">{paiseToRupees(item.unit_price_paise)}</td>
-                                      <td className="px-3 py-1.5 text-end font-mono font-medium">{paiseToRupees(item.subtotal_paise)}</td>
+                                      <td className="px-3 py-1.5 text-end font-mono"><Money paise={item.unit_price_paise} /></td>
+                                      <td className="px-3 py-1.5 text-end font-mono font-medium"><Money paise={item.subtotal_paise} /></td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -561,12 +554,12 @@ export default function AuditPage() {
                             </div>
                             <div className="flex items-center justify-end gap-3 text-xs">
                               {bill.discount_paise > 0 && (
-                                <span className="text-amber-600">− {paiseToRupees(bill.discount_paise)} discount</span>
+                                <span className="text-amber-600">− <Money paise={bill.discount_paise} /> discount</span>
                               )}
                               {bill.payment_method && (
                                 <span className="text-muted-foreground uppercase">{bill.payment_method}</span>
                               )}
-                              <span className="font-bold text-sm">Total: {paiseToRupees(bill.total_paise)}</span>
+                              <span className="font-bold text-sm">Total: <Money paise={bill.total_paise} /></span>
                             </div>
                           </div>
                         ))}
@@ -596,6 +589,6 @@ export default function AuditPage() {
         )}
 
       </div>
-    </div>
+    </PageContainer>
   );
 }

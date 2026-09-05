@@ -1,3 +1,4 @@
+import logging
 from datetime import date
 
 import django_filters
@@ -9,6 +10,8 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
+logger = logging.getLogger(__name__)
 
 from .models import Sale, Shift
 from .receipts import print_receipt_network, render_pdf_invoice, render_pdf_receipt, render_text_receipt
@@ -55,13 +58,13 @@ class SaleViewSet(
 ):
     queryset = (
         Sale.objects.select_related("cashier", "payment", "voided_by", "customer")
-        .prefetch_related("items__product")
+        .prefetch_related("items__product", "items__serials")
         .order_by("-created_at")
     )
     serializer_class = SaleSerializer
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = SaleFilter
-    search_fields = ["sale_number", "customer__name", "customer__phone"]
+    search_fields = ["sale_number", "customer__name", "customer__phone", "items__serials__serial"]
     ordering_fields = ["created_at", "total_paise"]
 
     def get_serializer_class(self):
@@ -154,7 +157,7 @@ class SaleViewSet(
     def receipt_text(self, request, pk=None):
         sale = (
             Sale.objects.select_related("cashier", "payment")
-            .prefetch_related("items__product")
+            .prefetch_related("items__product", "items__serials")
             .get(pk=pk)
         )
         text = render_text_receipt(sale)
@@ -166,19 +169,22 @@ class SaleViewSet(
     )
     @action(detail=True, methods=["get"], url_path="receipt/pdf")
     def receipt_pdf(self, request, pk=None):
-        sale = (
-            Sale.objects.select_related("cashier", "payment", "customer")
-            .prefetch_related("items__product")
-            .get(pk=pk)
-        )
-        template = request.query_params.get("template", "thermal")
         try:
+            sale = (
+                Sale.objects.select_related("cashier", "payment", "customer")
+                .prefetch_related("items__product", "items__serials")
+                .get(pk=pk)
+            )
+            template = request.query_params.get("template", "thermal")
             if template == "invoice":
                 pdf_bytes = render_pdf_invoice(sale)
             else:
                 pdf_bytes = render_pdf_receipt(sale)
-        except RuntimeError as exc:
-            return Response({"detail": str(exc)}, status=status.HTTP_503_SERVICE_UNAVAILABLE)
+        except Sale.DoesNotExist:
+            return Response({"detail": f"Sale {pk} not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception:
+            logger.exception("Receipt PDF failed for sale %s", pk)
+            return Response({"detail": "Receipt generation failed."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         fname = f"invoice-{sale.sale_number}.pdf" if template == "invoice" else f"receipt-{sale.sale_number}.pdf"
         response = HttpResponse(pdf_bytes, content_type="application/pdf")
@@ -190,7 +196,7 @@ class SaleViewSet(
     def receipt_print(self, request, pk=None):
         sale = (
             Sale.objects.select_related("cashier", "payment")
-            .prefetch_related("items__product")
+            .prefetch_related("items__product", "items__serials")
             .get(pk=pk)
         )
         try:

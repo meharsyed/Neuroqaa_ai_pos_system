@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { ProductImage } from "@/components/ProductImage";
 import { catalogApi, rupeesToPaise } from "@/lib/catalog";
+import { useToast } from "@/lib/use-toast";
 import { cn } from "@/lib/utils";
 import type { Category, Product } from "@/types/catalog";
 
@@ -51,6 +52,7 @@ const UNIT_OPTIONS_LIST = [
 
 export function ProductModal({ open, onOpenChange, product }: Props) {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const isEdit = Boolean(product);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -164,7 +166,8 @@ export function ProductModal({ open, onOpenChange, product }: Props) {
 
       return savedProduct;
     },
-    onSuccess: () => {
+    onSuccess: (saved) => {
+      toast({ title: isEdit ? "Product updated" : "Product created", description: `${saved.name} saved successfully` });
       qc.invalidateQueries({ queryKey: ["products"] });
       qc.invalidateQueries({ queryKey: ["low-stock"] });
       setImageFile(null);

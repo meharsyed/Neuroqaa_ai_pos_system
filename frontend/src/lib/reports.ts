@@ -69,7 +69,15 @@ export function openReceiptPdf(saleId: number, template: ReceiptTemplate = "ther
     })
     .then((r) => {
       const blobUrl = URL.createObjectURL(r.data);
-      window.open(blobUrl, "_blank");
+      const win = window.open(blobUrl, "_blank");
+      if (!win) {
+        alert("Popup blocked. Please allow popups for this site.");
+      }
+    })
+    .catch((err) => {
+      console.error("Receipt PDF error:", err);
+      const detail = err.response?.data?.detail || err.message;
+      alert(`Failed to load receipt: ${detail}`);
     });
 }
 

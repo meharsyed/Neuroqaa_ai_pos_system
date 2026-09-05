@@ -1,15 +1,18 @@
+import { PageContainer } from "@/layouts/components/PageContainer";
+import { PageHeader } from "@/layouts/components/PageHeader";
 import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Save, Settings, AlertTriangle, Printer } from "lucide-react";
+import { Save, AlertTriangle, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { FormTextField } from "@/components/forms";
 import { configApi } from "@/lib/config";
 import { useAuthStore } from "@/store/authStore";
+import { useToast } from "@/lib/use-toast";
 import type { Setting } from "@/types/config";
 
 const GROUPS: { label: string; keys: string[] }[] = [
   { label: "Shop Information", keys: ["shop_name", "shop_address", "shop_phone", "shop_email"] },
-  { label: "Receipt", keys: ["receipt_header", "receipt_footer", "receipt_width", "default_receipt_template"] },
+  { label: "Receipt", keys: ["receipt_header", "receipt_footer", "receipt_width", "default_receipt_template", "show_serial_numbers_on_receipt"] },
   { label: "Thermal Printer", keys: ["thermal_printer_ip", "thermal_printer_port"] },
   { label: "Sales & Stock", keys: ["tax_pct", "low_stock_threshold"] },
 ];
@@ -25,14 +28,14 @@ function ThermalPreview() {
           "polygon(0% 0%, 100% 0%, 100% 94%, 91% 100%, 82% 94%, 73% 100%, 64% 94%, 55% 100%, 46% 94%, 37% 100%, 28% 94%, 19% 100%, 10% 94%, 0% 100%)",
       }}
     >
-      <p className="text-[6px] font-bold tracking-wide text-slate-700 leading-none mt-0.5">RECEIPT</p>
-      <div className="w-8 h-1 bg-slate-300 rounded-sm" />
-      <div className="w-full border-t border-dashed border-slate-300" />
-      <div className="w-9 h-1 bg-slate-300 rounded-sm" />
-      <div className="w-9 h-1 bg-slate-300 rounded-sm" />
-      <div className="w-9 h-1 bg-slate-300 rounded-sm" />
-      <div className="w-full border-t border-dashed border-slate-300" />
-      <p className="text-[6px] font-bold text-slate-800 leading-none">Rs. 000</p>
+      <p className="text-[6px] font-bold tracking-wide text-n-700 leading-none mt-0.5">RECEIPT</p>
+      <div className="w-8 h-1 bg-n-300 rounded-sm" />
+      <div className="w-full border-t border-dashed border-n-300" />
+      <div className="w-9 h-1 bg-n-300 rounded-sm" />
+      <div className="w-9 h-1 bg-n-300 rounded-sm" />
+      <div className="w-9 h-1 bg-n-300 rounded-sm" />
+      <div className="w-full border-t border-dashed border-n-300" />
+      <p className="text-[6px] font-bold text-n-800 leading-none">Rs. 000</p>
     </div>
   );
 }
@@ -40,27 +43,27 @@ function ThermalPreview() {
 function InvoicePreview() {
   return (
     <div className="w-20 h-28 bg-white border rounded-sm shadow-md overflow-hidden shrink-0 flex flex-col">
-      <div className="h-2 bg-indigo-600 w-full" />
+      <div className="h-2 bg-blue-600 w-full" />
       <div className="flex items-center gap-1 px-1.5 pt-2">
-        <div className="w-3 h-3 rounded-full bg-indigo-600 shrink-0" />
-        <p className="text-[7px] font-bold text-indigo-600 leading-none tracking-wide">INVOICE</p>
+        <div className="w-3 h-3 rounded-full bg-blue-600 shrink-0" />
+        <p className="text-[7px] font-bold text-blue-600 leading-none tracking-wide">INVOICE</p>
       </div>
       <div className="flex flex-col gap-1 px-1.5 pt-2.5">
         <div className="flex justify-between items-center">
-          <div className="w-7 h-1 bg-slate-300 rounded-sm" />
-          <div className="w-3 h-1 bg-slate-300 rounded-sm" />
+          <div className="w-7 h-1 bg-n-300 rounded-sm" />
+          <div className="w-3 h-1 bg-n-300 rounded-sm" />
         </div>
         <div className="flex justify-between items-center">
-          <div className="w-6 h-1 bg-slate-200 rounded-sm" />
-          <div className="w-3 h-1 bg-slate-200 rounded-sm" />
+          <div className="w-6 h-1 bg-n-200 rounded-sm" />
+          <div className="w-3 h-1 bg-n-200 rounded-sm" />
         </div>
         <div className="flex justify-between items-center">
-          <div className="w-7 h-1 bg-slate-300 rounded-sm" />
-          <div className="w-3 h-1 bg-slate-300 rounded-sm" />
+          <div className="w-7 h-1 bg-n-300 rounded-sm" />
+          <div className="w-3 h-1 bg-n-300 rounded-sm" />
         </div>
       </div>
       <div className="flex-1" />
-      <div className="h-2.5 bg-slate-800 mx-1.5 mb-2 rounded-sm flex items-center justify-end px-1">
+      <div className="h-2.5 bg-n-800 mx-1.5 mb-2 rounded-sm flex items-center justify-end px-1">
         <div className="w-4 h-0.5 bg-white/70 rounded-sm" />
       </div>
     </div>
@@ -142,6 +145,7 @@ function ReceiptTemplateField({
 export default function SettingsPage() {
   const user = useAuthStore((s) => s.user);
   const qc = useQueryClient();
+  const { toast } = useToast();
   const canEdit = user?.role === "owner" || user?.role === "manager";
 
   const { data: settings = [], isLoading } = useQuery({
@@ -169,6 +173,7 @@ export default function SettingsPage() {
       );
       setDirty((d) => ({ ...d, [updated.key]: false }));
       setSaved((s) => ({ ...s, [updated.key]: true }));
+      toast({ title: "Setting saved", description: `${updated.key} updated successfully` });
       setTimeout(() => setSaved((s) => ({ ...s, [updated.key]: false })), 2000);
     },
   });
@@ -192,11 +197,13 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-6 space-y-8">
-      <div className="flex items-center gap-3">
-        <Settings className="h-5 w-5" />
-        <h1 className="text-xl font-semibold">Settings</h1>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="Settings"
+        subtitle={!canEdit ? "Read-only access — Only owners and managers can change settings" : ""}
+      />
+
+      <div className="max-w-2xl space-y-8">
 
       {!canEdit && (
         <div className="rounded-lg bg-yellow-50 border border-yellow-200 px-4 py-3 text-sm text-yellow-800">
@@ -218,30 +225,43 @@ export default function SettingsPage() {
 
             <div className="rounded-lg border divide-y">
               {groupSettings.map((setting) => (
-                <div key={setting.key} className="px-4 py-3 space-y-1">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium">{setting.label}</label>
-                    {saved[setting.key] && (
-                      <span className="text-xs text-green-600 font-medium">Saved</span>
-                    )}
-                  </div>
-                  {setting.description && (
-                    <p className="text-xs text-muted-foreground">{setting.description}</p>
-                  )}
+                <div key={setting.key} className="px-4 py-3 space-y-2">
                   {setting.key === "default_receipt_template" ? (
-                    <ReceiptTemplateField
-                      value={values[setting.key] ?? "thermal"}
-                      onChange={(v) => handleChange(setting.key, v)}
-                      disabled={!canEdit}
-                      thermalConfigured={!!values["thermal_printer_ip"]?.trim()}
-                    />
+                    <>
+                      <label className="text-sm font-medium">{setting.label}</label>
+                      <ReceiptTemplateField
+                        value={values[setting.key] ?? "thermal"}
+                        onChange={(v) => handleChange(setting.key, v)}
+                        disabled={!canEdit}
+                        thermalConfigured={!!values["thermal_printer_ip"]?.trim()}
+                      />
+                    </>
+                  ) : setting.key === "show_serial_numbers_on_receipt" ? (
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={(values[setting.key] ?? "true").toLowerCase() === "true"}
+                        onChange={(e) => handleChange(setting.key, e.target.checked ? "true" : "false")}
+                        disabled={!canEdit}
+                        className="h-4 w-4 rounded border-border"
+                      />
+                      <div>
+                        <p className="text-sm font-medium">{setting.label}</p>
+                        <p className="text-xs text-muted-foreground">{setting.description}</p>
+                      </div>
+                    </label>
                   ) : (
-                    <Input
+                    <FormTextField
+                      label={setting.label}
+                      name={setting.key}
                       value={values[setting.key] ?? ""}
-                      onChange={(e) => handleChange(setting.key, e.target.value)}
+                      onChange={(val) => handleChange(setting.key, val)}
                       disabled={!canEdit}
-                      className={`text-sm ${dirty[setting.key] ? "border-primary" : ""}`}
+                      hint={setting.description}
                     />
+                  )}
+                  {saved[setting.key] && (
+                    <span className="text-xs text-green-600 font-medium">✓ Saved</span>
                   )}
                 </div>
               ))}
@@ -258,6 +278,7 @@ export default function SettingsPage() {
           </section>
         );
       })}
-    </div>
+      </div>
+    </PageContainer>
   );
 }

@@ -27,7 +27,7 @@ export function LanguageToggle({ variant = "sidebar" }: LanguageToggleProps) {
     variant === "sidebar" ? (
       "px-2.5 py-2 text-xs text-white/80 hover:text-white hover:bg-white/15 bg-white/5"
     ) : (
-      "px-3 py-2 text-sm text-slate-700 hover:text-slate-900 hover:bg-slate-100 bg-slate-50 border border-slate-200"
+      "px-3 py-2 text-sm text-n-700 hover:text-n-900 hover:bg-n-100 bg-n-50 border border-n-200"
     )
   );
 
@@ -46,7 +46,7 @@ export function LanguageToggle({ variant = "sidebar" }: LanguageToggleProps) {
       {isOpen && (
         <div className={cn(
           "absolute mt-1 bg-white rounded-lg border shadow-lg z-50 min-w-[140px]",
-          variant === "sidebar" ? "right-0 border-white/20 bg-slate-800 shadow-2xl" : "right-0 border-slate-200"
+          variant === "sidebar" ? "right-0 border-white/20 bg-n-800 shadow-2xl" : "right-0 border-n-200"
         )}>
           <button
             onClick={() => handleLanguageChange("en")}
@@ -58,7 +58,7 @@ export function LanguageToggle({ variant = "sidebar" }: LanguageToggleProps) {
                   : "text-primary bg-primary/10"
                 : variant === "sidebar"
                   ? "text-white/80 hover:text-white hover:bg-white/5"
-                  : "text-slate-700 hover:text-slate-900 hover:bg-slate-100"
+                  : "text-n-700 hover:text-n-900 hover:bg-n-100"
             )}
           >
             🇺🇸 English
@@ -73,7 +73,7 @@ export function LanguageToggle({ variant = "sidebar" }: LanguageToggleProps) {
                   : "text-primary bg-primary/10"
                 : variant === "sidebar"
                   ? "text-white/80 hover:text-white hover:bg-white/5"
-                  : "text-slate-700 hover:text-slate-900 hover:bg-slate-100"
+                  : "text-n-700 hover:text-n-900 hover:bg-n-100"
             )}
           >
             🇵🇰 اردو

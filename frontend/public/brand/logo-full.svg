@@ -1,0 +1,18 @@
+<svg viewBox="0 0 400 100" xmlns="http://www.w3.org/2000/svg">
+  <!-- Horizontal lockup: shield + wordmark -->
+  <defs>
+    <style>
+      .brand-text { font-family: Inter, system-ui, sans-serif; font-weight: 700; letter-spacing: -0.02em; }
+    </style>
+  </defs>
+
+  <!-- Shield mark (left) -->
+  <g>
+    <path d="M32 20 L52 30 L52 45 C52 53 32 61 32 61 C32 61 12 53 12 45 L12 30 Z" stroke="#1A3A28" stroke-width="1.5" fill="#1A3A28"/>
+    <polyline points="24 46 32 52 44 38" stroke="white" stroke-width="1.5" fill="none"/>
+  </g>
+
+  <!-- "SPEED TECH SOLUTIONS" wordmark (right) -->
+  <text x="70" y="50" class="brand-text" font-size="36" fill="#1A3A28" letter-spacing="0.02em">SPEED TECH</text>
+  <text x="70" y="75" class="brand-text" font-size="18" fill="#12898A">SOLUTIONS</text>
+</svg>

@@ -1,4 +1,6 @@
-import { useState } from "react";
+import { PageContainer } from "@/layouts/components/PageContainer";
+import { PageHeader } from "@/layouts/components/PageHeader";
+import { useState, useEffect, type ReactNode } from "react";
 
 /** Format stock quantity: whole-number units show as integers; continuous units keep meaningful decimals. */
 function fmtQty(qty: string, unit: string): string {
@@ -15,16 +17,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ProductImage } from "@/components/ProductImage";
 import { ProductModal } from "@/components/catalog/ProductModal";
 import { StockInModal } from "@/components/catalog/StockInModal";
-import { catalogApi, paiseToRupees } from "@/lib/catalog";
+import { catalogApi } from "@/lib/catalog";
+import { Money } from "@/components/ui/money";
 import { reportsApi, downloadCsv } from "@/lib/reports";
 import type { Product, ProductFilters } from "@/types/catalog";
 
 type ProductsTab = "catalogue" | "inventory";
 
-function SummaryCard({ label, value }: { label: string; value: string }) {
+function SummaryCard({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="rounded-lg border p-4 space-y-1">
       <p className="text-xs text-muted-foreground uppercase tracking-wide">{label}</p>
@@ -37,6 +42,7 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
 export default function ProductsPage() {
   const [tab, setTab] = useState<ProductsTab>("catalogue");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<number | "">("");
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [page, setPage] = useState(1);
@@ -45,7 +51,14 @@ export default function ProductsPage() {
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [importStatus, setImportStatus] = useState<string | null>(null);
 
-  const debouncedSearch = search; // Simple: we'll re-query on each keystroke since TanStack Query deduplicates
+  // Debounce search input (300ms)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   const filters: ProductFilters = {
     ...(debouncedSearch && { search: debouncedSearch }),
@@ -113,45 +126,38 @@ export default function ProductsPage() {
   }
 
   return (
-    <div className="p-6 space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Products</h1>
-          <p className="text-sm text-muted-foreground">
-            {totalCount.toLocaleString()} products
-            {lowStockProducts.length > 0 && (
-              <span className="ml-2">
-                <Badge variant="warning">{lowStockProducts.length} low stock</Badge>
-              </span>
-            )}
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          {tab === "catalogue" ? (
-            <>
-              {/* CSV import */}
-              <label className="cursor-pointer">
-                <input type="file" accept=".csv" className="hidden" onChange={handleImportCsv} />
-                <Button variant="outline" size="sm" asChild>
-                  <span><Upload className="h-4 w-4 mr-1" /> Import CSV</span>
+    <PageContainer>
+      <PageHeader
+        title="Products"
+        subtitle={`${totalCount.toLocaleString()} items${lowStockProducts.length > 0 ? ` · ${lowStockProducts.length} low stock` : ""}`}
+        actions={
+          <div className="flex items-center gap-2">
+            {tab === "catalogue" ? (
+              <>
+                <label className="cursor-pointer">
+                  <input type="file" accept=".csv" className="hidden" onChange={handleImportCsv} />
+                  <Button variant="outline" size="sm" asChild>
+                    <span><Upload className="h-4 w-4 mr-1" /> Import CSV</span>
+                  </Button>
+                </label>
+                <Button size="sm" onClick={openAddModal}>
+                  <Plus className="h-4 w-4 mr-1" /> New Product
                 </Button>
-              </label>
-              <Button size="sm" onClick={openAddModal}>
-                <Plus className="h-4 w-4 mr-1" /> New Product
+              </>
+            ) : (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => downloadCsv("/reports/inventory/?export=csv", "inventory-valuation.csv")}
+              >
+                <Download className="h-4 w-4 mr-1" /> Export CSV
               </Button>
-            </>
-          ) : (
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => downloadCsv("/reports/inventory/?export=csv", "inventory-valuation.csv")}
-            >
-              <Download className="h-4 w-4 mr-1" /> Export CSV
-            </Button>
-          )}
-        </div>
-      </div>
+            )}
+          </div>
+        }
+      />
+
+      <div className="space-y-4">
 
       {/* Tabs */}
       <div className="flex gap-1 border-b">
@@ -178,13 +184,44 @@ export default function ProductsPage() {
 
       {tab === "inventory" ? (
         <div className="space-y-6">
-          {invLoading && <p className="text-muted-foreground text-sm">Loading…</p>}
+          {invLoading && (
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="rounded-lg border p-4">
+                    <Skeleton className="h-3 w-24 mb-2" />
+                    <Skeleton className="h-6 w-32" />
+                  </div>
+                ))}
+              </div>
+              <div className="rounded-lg border overflow-hidden">
+                <div className="bg-muted/50 p-3">
+                  <div className="grid grid-cols-5 gap-4">
+                    {[...Array(5)].map((_, i) => (
+                      <Skeleton key={i} className="h-4 w-16" />
+                    ))}
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="px-4 py-3 border-b grid grid-cols-5 gap-4">
+                      <Skeleton className="h-4 w-12" />
+                      <Skeleton className="h-4 w-24" />
+                      <Skeleton className="h-4 w-8 ml-auto" />
+                      <Skeleton className="h-4 w-16 ml-auto" />
+                      <Skeleton className="h-4 w-16 ml-auto" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
           {invData && (
             <>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                <SummaryCard label="Cost Value" value={paiseToRupees(invData.total_cost_value_paise)} />
-                <SummaryCard label="Sell Value" value={paiseToRupees(invData.total_sell_value_paise)} />
-                <SummaryCard label="Potential Profit" value={paiseToRupees(invData.potential_profit_paise)} />
+                <SummaryCard label="Cost Value" value={<Money paise={invData.total_cost_value_paise} />} />
+                <SummaryCard label="Sell Value" value={<Money paise={invData.total_sell_value_paise} />} />
+                <SummaryCard label="Potential Profit" value={<Money paise={invData.potential_profit_paise} />} />
               </div>
               <div className="rounded-lg border overflow-hidden">
                 <table className="w-full text-sm">
@@ -204,10 +241,10 @@ export default function ProductsPage() {
                         <td className="px-4 py-2">{p.name}</td>
                         <td className="px-4 py-2 text-right tabular-nums">{p.stock_qty}</td>
                         <td className="px-4 py-2 text-right tabular-nums font-mono">
-                          {paiseToRupees(p.cost_value_paise)}
+                          <Money paise={p.cost_value_paise} />
                         </td>
                         <td className="px-4 py-2 text-right tabular-nums font-mono">
-                          {paiseToRupees(p.sell_value_paise)}
+                          <Money paise={p.sell_value_paise} />
                         </td>
                       </tr>
                     ))}
@@ -271,11 +308,20 @@ export default function ProductsPage() {
           </thead>
           <tbody className="divide-y">
             {isLoading && (
-              <tr>
-                <td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">
-                  Loading…
-                </td>
-              </tr>
+              <>
+                {[...Array(6)].map((_, i) => (
+                  <tr key={i}>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-16" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-32" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-12" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-16 ml-auto" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-12 ml-auto" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-16 mx-auto" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-20 ml-auto" /></td>
+                  </tr>
+                ))}
+              </>
             )}
             {isError && (
               <tr>
@@ -286,14 +332,17 @@ export default function ProductsPage() {
             )}
             {!isLoading && products.length === 0 && (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center">
-                  <PackageX className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
-                  <p className="text-muted-foreground">No products found.</p>
-                  {!search && (
-                    <Button size="sm" className="mt-3" onClick={openAddModal}>
-                      Add your first product
-                    </Button>
-                  )}
+                <td colSpan={8} className="px-4 py-8">
+                  <EmptyState
+                    icon={PackageX}
+                    title="No products found"
+                    description={search ? "Try adjusting your search or filters." : "Add your first product to get started."}
+                    action={!search ? (
+                      <Button size="sm" onClick={openAddModal}>
+                        Add your first product
+                      </Button>
+                    ) : undefined}
+                  />
                 </td>
               </tr>
             )}
@@ -316,12 +365,14 @@ export default function ProductsPage() {
                 <td className="px-4 py-3 text-muted-foreground">{product.unit}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{product.sell_price}</td>
                 <td className="px-4 py-3 text-right tabular-nums">
-                  <span className={product.is_low_stock ? "text-amber-600 font-semibold" : ""}>
+                  <span className={parseFloat(product.stock_qty) === 0 ? "text-red-600 font-semibold" : product.is_low_stock ? "text-amber-600 font-semibold" : ""}>
                     {fmtQty(product.stock_qty, product.unit)}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-center">
-                  {product.is_low_stock ? (
+                  {parseFloat(product.stock_qty) === 0 ? (
+                    <Badge variant="danger">Out of Stock</Badge>
+                  ) : product.is_low_stock ? (
                     <Badge variant="warning">Low Stock</Badge>
                   ) : (
                     <Badge variant="success">OK</Badge>
@@ -378,6 +429,7 @@ export default function ProductsPage() {
       )}
       </>
       )}
+      </div>
 
       {/* Modals */}
       <ProductModal
@@ -390,6 +442,6 @@ export default function ProductsPage() {
         onOpenChange={setStockInModalOpen}
         product={selectedProduct}
       />
-    </div>
+    </PageContainer>
   );
 }

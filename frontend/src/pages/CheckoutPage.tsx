@@ -4,20 +4,24 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, Barcode, Search, Trash2, Minus, Plus, X,
   ShoppingCart, FileText, Printer, CheckCircle2, Tag,
-  Phone, UserCheck, UserPlus,
+  Phone, UserCheck, UserPlus, Package,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import PaymentModal from "@/components/checkout/PaymentModal";
-import { catalogApi, paiseToRupees } from "@/lib/catalog";
+import { catalogApi } from "@/lib/catalog";
+import { Money } from "@/components/ui/money";
 import { salesApi } from "@/lib/sales";
 import { customersApi } from "@/lib/customers";
 import { configApi } from "@/lib/config";
 import { openReceiptPdf, printReceipt, type ReceiptTemplate } from "@/lib/reports";
 import { useTranslation } from "@/lib/useTranslation";
+import { toast } from "@/lib/use-toast";
+import { useHeldCartsStore } from "@/store/heldCartsStore";
 import type { CartItem, PaymentMethod, Sale } from "@/types/sales";
 import type { Product } from "@/types/catalog";
 import type { Customer } from "@/types/customers";
@@ -46,10 +50,13 @@ function computeItemDiscountPaise(qty: number, unitPricePaise: number, pct: numb
 export default function CheckoutPage() {
   const qc = useQueryClient();
   const { t } = useTranslation();
+  const { addCart: saveHeldCart, listCarts: getHeldCarts, deleteCart: deleteHeldCart } = useHeldCartsStore();
 
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
   const [saleDiscountPct, setSaleDiscountPct] = useState("0");
+  const [serialInput, setSerialInput] = useState("");
+  const [warrantyMonthsInput, setWarrantyMonthsInput] = useState("");
 
   const [barcodeVal, setBarcodeVal] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
@@ -68,6 +75,10 @@ export default function CheckoutPage() {
 
   // Tax state
   const [applyTax, setApplyTax] = useState(false);
+
+  // Held cart dialog state
+  const [holdCartOpen, setHoldCartOpen] = useState(false);
+  const [holdCartName, setHoldCartName] = useState("");
 
   const barcodeRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -88,7 +99,7 @@ export default function CheckoutPage() {
 
   // ── Product search ─────────────────────────────────────────────────────
 
-  const { data: searchResults } = useQuery({
+  const { data: searchResults, isLoading: searchLoading } = useQuery({
     queryKey: ["products-search", searchQuery],
     queryFn: () => catalogApi.products.list({ search: searchQuery, page: 1 }),
     enabled: searchQuery.trim().length >= 2,
@@ -113,6 +124,7 @@ export default function CheckoutPage() {
           discount_pct: item.discount_pct,
           qty: newQty,
           discount_paise: computeItemDiscountPaise(newQty, item.unit_price_paise, item.discount_pct),
+          serials: item.serials,
         };
         setSelectedIdx(existing);
         return updated;
@@ -160,6 +172,7 @@ export default function CheckoutPage() {
         discount_pct: item.discount_pct,
         qty: newQty,
         discount_paise: computeItemDiscountPaise(newQty, item.unit_price_paise, item.discount_pct),
+        serials: item.serials,
       };
       return updated;
     });
@@ -179,6 +192,7 @@ export default function CheckoutPage() {
         discount_pct: item.discount_pct,
         qty,
         discount_paise: computeItemDiscountPaise(qty, item.unit_price_paise, item.discount_pct),
+        serials: item.serials,
       };
       return updated;
     });
@@ -198,7 +212,32 @@ export default function CheckoutPage() {
         qty: item.qty,
         discount_pct: clamped,
         discount_paise: computeItemDiscountPaise(item.qty, item.unit_price_paise, clamped),
+        serials: item.serials,
       };
+      return updated;
+    });
+  }, []);
+
+  const addSerialToItem = useCallback((idx: number, serial: string, warranty_months?: number | null) => {
+    if (!serial.trim()) return;
+    setCartItems((prev) => {
+      const updated = [...prev];
+      const item = updated[idx];
+      const newSerials = [...(item.serials || [])];
+      newSerials.push({ serial: serial.trim(), warranty_months: warranty_months || undefined });
+      updated[idx] = { ...item, serials: newSerials };
+      return updated;
+    });
+    setSerialInput("");
+    setWarrantyMonthsInput("");
+  }, []);
+
+  const removeSerialFromItem = useCallback((idx: number, serialIdx: number) => {
+    setCartItems((prev) => {
+      const updated = [...prev];
+      const item = updated[idx];
+      const newSerials = (item.serials || []).filter((_, i) => i !== serialIdx);
+      updated[idx] = { ...item, serials: newSerials.length > 0 ? newSerials : undefined };
       return updated;
     });
   }, []);
@@ -215,6 +254,27 @@ export default function CheckoutPage() {
     setApplyTax(false);
     barcodeRef.current?.focus();
   }, []);
+
+  const handleSaveHeldCart = useCallback(() => {
+    if (!holdCartName.trim() || cartItems.length === 0) return;
+    saveHeldCart(holdCartName.trim(), cartItems, saleDiscountPct, applyTax, customerPhone, customerName);
+    toast({ title: "Cart held", description: `"${holdCartName}" saved successfully` });
+    setHoldCartName("");
+    setHoldCartOpen(false);
+    clearCart();
+  }, [holdCartName, cartItems, saleDiscountPct, applyTax, customerPhone, customerName, saveHeldCart, clearCart]);
+
+  const handleLoadHeldCart = useCallback((cartId: string) => {
+    const heldCart = useHeldCartsStore.getState().getCart(cartId);
+    if (!heldCart) return;
+    setCartItems(heldCart.items);
+    setSaleDiscountPct(heldCart.saleDiscountPct);
+    setApplyTax(heldCart.applyTax);
+    setCustomerPhone(heldCart.customerPhone);
+    setCustomerName(heldCart.customerName);
+    deleteHeldCart(cartId);
+    toast({ title: "Cart restored", description: `"${heldCart.name}" loaded` });
+  }, [deleteHeldCart]);
 
   // ── Customer lookup ────────────────────────────────────────────────────
 
@@ -284,12 +344,22 @@ export default function CheckoutPage() {
       setSaleError("");
       qc.invalidateQueries({ queryKey: ["products"] });
       qc.invalidateQueries({ queryKey: ["low-stock"] });
+      toast({
+        title: "Sale completed",
+        description: `${sale.sale_number}`,
+        variant: "success",
+      });
     },
     onError: (err: unknown) => {
       const detail =
         (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
         ?? t("checkout.saleFailedGeneric");
       setSaleError(detail);
+      toast({
+        title: "Sale failed",
+        description: detail,
+        variant: "error",
+      });
     },
   });
 
@@ -315,6 +385,7 @@ export default function CheckoutPage() {
           qty: String(i.qty),
           unit_price_paise: i.unit_price_paise,
           discount_paise: i.discount_paise,
+          serials: i.serials && i.serials.length > 0 ? i.serials : undefined,
         })),
         payment_method: method,
         amount_tendered_paise: amountTenderedPaise,
@@ -358,26 +429,26 @@ export default function CheckoutPage() {
 
   if (completedSale) {
     return (
-      <div className="min-h-full flex flex-col items-center justify-center bg-gradient-to-b from-background to-emerald-50/30 p-8">
+      <div className="min-h-full flex flex-col items-center justify-center bg-gradient-to-b from-background to-teal-50/30 p-8">
         <div className="text-center space-y-5 max-w-sm w-full animate-fade-in-scale">
-          <div className="w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center mx-auto shadow-lg shadow-emerald-200">
-            <CheckCircle2 className="h-10 w-10 text-emerald-600" />
+          <div className="w-20 h-20 rounded-full bg-teal-100 flex items-center justify-center mx-auto shadow-lg shadow-teal-200">
+            <CheckCircle2 className="h-10 w-10 text-teal-600" />
           </div>
 
           <div>
-            <h2 className="text-2xl font-bold text-emerald-700">{t("checkout.saleComplete")}</h2>
+            <h2 className="text-2xl font-bold text-teal-700">{t("checkout.saleComplete")}</h2>
             <p className="text-sm text-muted-foreground font-mono mt-1">{completedSale.sale_number}</p>
           </div>
 
           <div className="bg-white rounded-xl border shadow-sm p-4 space-y-2 text-sm text-start">
             <div className="flex justify-between items-center">
               <span className="text-muted-foreground">{t("checkout.totalCharged")}</span>
-              <span className="font-bold text-2xl tabular-nums">{paiseToRupees(completedSale.total_paise)}</span>
+              <span className="font-bold text-2xl tabular-nums"><Money paise={completedSale.total_paise} /></span>
             </div>
             {completedSale.payment.change_paise > 0 && (
-              <div className="flex justify-between text-emerald-600 font-semibold border-t pt-2">
+              <div className="flex justify-between text-teal-600 font-semibold border-t pt-2">
                 <span>{t("checkout.changeToGive")}</span>
-                <span className="tabular-nums text-lg font-bold">{paiseToRupees(completedSale.payment.change_paise)}</span>
+                <span className="tabular-nums text-lg font-bold"><Money paise={completedSale.payment.change_paise} /></span>
               </div>
             )}
             <div className="flex justify-between text-xs text-muted-foreground border-t pt-2">
@@ -387,13 +458,13 @@ export default function CheckoutPage() {
             {completedSale.discount_paise > 0 && (
               <div className="flex justify-between text-xs text-amber-600">
                 <span>{t("checkout.billDiscount")}</span>
-                <span>− {paiseToRupees(completedSale.discount_paise)}</span>
+                <span>− <Money paise={completedSale.discount_paise} /></span>
               </div>
             )}
           </div>
 
           <div className="flex flex-col gap-2 w-full">
-            <Button onClick={clearCart} size="lg" className="w-full bg-emerald-600 hover:bg-emerald-700">
+            <Button onClick={clearCart} size="lg" className="w-full bg-teal-600 hover:bg-teal-700">
               <ShoppingCart className="h-4 w-4 me-2" />
               {t("checkout.newSaleBtn")}
             </Button>
@@ -415,8 +486,8 @@ export default function CheckoutPage() {
                 className="flex-1"
                 onClick={() =>
                   printReceipt(completedSale.id)
-                    .then(() => alert(t("checkout.receiptSentToPrinter")))
-                    .catch(() => alert(t("checkout.printerNotAvailable")))
+                    .then(() => toast({ title: t("checkout.receiptSentToPrinter"), variant: "success" }))
+                    .catch(() => toast({ title: t("checkout.printerNotAvailable"), variant: "error" }))
                 }
               >
                 <Printer className="h-4 w-4 me-1.5" /> {t("checkout.print")}
@@ -447,7 +518,7 @@ export default function CheckoutPage() {
         <span className="text-border">·</span>
         <span className="font-semibold text-sm">{t("checkout.checkoutTitle")}</span>
         {cartItems.length > 0 && (
-          <Badge variant="secondary" className="text-xs font-mono">
+          <Badge variant="neutral" className="text-xs font-mono">
             {totalUnits} {totalUnits !== 1 ? t("checkout.units") : t("checkout.unit")}
           </Badge>
         )}
@@ -477,16 +548,68 @@ export default function CheckoutPage() {
           {/* Cart items list */}
           <div className="flex-1 overflow-y-auto">
             {cartItems.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full gap-3 text-muted-foreground">
-                <div className="w-16 h-16 rounded-full bg-muted/40 flex items-center justify-center">
-                  <ShoppingCart className="h-7 w-7 opacity-25" />
+              <div className="flex flex-col h-full overflow-y-auto">
+                {/* Empty cart message */}
+                <div className="flex flex-col items-center justify-center min-h-64 gap-3 text-muted-foreground p-4">
+                  <div className="w-16 h-16 rounded-full bg-muted/40 flex items-center justify-center">
+                    <ShoppingCart className="h-7 w-7 opacity-25" />
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm font-medium">{t("checkout.cartEmpty")}</p>
+                    <p className="text-xs text-muted-foreground/60 mt-0.5">
+                      {t("checkout.scanOrSearchHint")}
+                    </p>
+                  </div>
+
+                  {/* F-key legend */}
+                  <div className="mt-6 pt-4 border-t border-muted text-center space-y-2">
+                    <p className="text-xs font-semibold text-foreground">Quick Actions</p>
+                    <div className="space-y-1 text-[11px]">
+                      <div><kbd className="bg-muted px-1.5 py-0.5 rounded border text-xs">F2</kbd> Print Receipt</div>
+                      <div><kbd className="bg-muted px-1.5 py-0.5 rounded border text-xs">F3</kbd> Payment Modes</div>
+                      <div><kbd className="bg-muted px-1.5 py-0.5 rounded border text-xs">F9</kbd> Discount</div>
+                      <div><kbd className="bg-muted px-1.5 py-0.5 rounded border text-xs">F12</kbd> Pay Now</div>
+                    </div>
+                  </div>
                 </div>
-                <div className="text-center">
-                  <p className="text-sm font-medium">{t("checkout.cartEmpty")}</p>
-                  <p className="text-xs text-muted-foreground/60 mt-0.5">
-                    {t("checkout.scanOrSearchHint")}
-                  </p>
-                </div>
+
+                {/* Held carts list */}
+                {getHeldCarts().length > 0 && (
+                  <div className="border-t bg-muted/20 p-3 space-y-2">
+                    <p className="text-xs font-semibold text-foreground">Held Carts ({getHeldCarts().length})</p>
+                    <div className="space-y-1.5">
+                      {getHeldCarts().map((heldCart) => (
+                        <div
+                          key={heldCart.id}
+                          className="flex items-center justify-between gap-2 bg-white border rounded p-2 text-xs hover:bg-muted/40 transition-colors"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="font-medium truncate">{heldCart.name}</p>
+                            <p className="text-muted-foreground text-[10px]">{heldCart.items.length} items</p>
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <Button
+                              size="sm"
+                              variant="default"
+                              className="h-7 text-xs"
+                              onClick={() => handleLoadHeldCart(heldCart.id)}
+                            >
+                              Load
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 text-xs hover:text-destructive"
+                              onClick={() => deleteHeldCart(heldCart.id)}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               <table className="w-full text-sm">
@@ -607,15 +730,15 @@ export default function CheckoutPage() {
 
                         {/* Unit price */}
                         <td className="px-3 py-2.5 text-right tabular-nums text-muted-foreground text-xs">
-                          {paiseToRupees(item.unit_price_paise)}
+                          <Money paise={item.unit_price_paise} />
                         </td>
 
                         {/* Line total */}
                         <td className="px-4 py-2.5 text-right">
-                          <div className="font-semibold tabular-nums">{paiseToRupees(lineNet)}</div>
+                          <div className="font-semibold tabular-nums"><Money paise={lineNet} /></div>
                           {item.discount_paise > 0 && (
                             <div className="text-[10px] text-muted-foreground/60 tabular-nums line-through">
-                              {paiseToRupees(lineGross)}
+                              <Money paise={lineGross} />
                             </div>
                           )}
                         </td>
@@ -650,7 +773,7 @@ export default function CheckoutPage() {
                     ({totalUnits} {totalUnits !== 1 ? t("checkout.units") : t("checkout.unit")})
                   </span>
                 </span>
-                <span className="tabular-nums">{paiseToRupees(netSubtotalPaise)}</span>
+                <span className="tabular-nums"><Money paise={netSubtotalPaise} /></span>
               </div>
 
               {/* Item discounts summary */}
@@ -660,7 +783,7 @@ export default function CheckoutPage() {
                     <Tag className="h-3 w-3" />
                     {t("checkout.itemDiscounts")}
                   </span>
-                  <span className="tabular-nums">− {paiseToRupees(itemDiscountsTotalPaise)}</span>
+                  <span className="tabular-nums">− <Money paise={itemDiscountsTotalPaise} /></span>
                 </div>
               )}
 
@@ -692,7 +815,7 @@ export default function CheckoutPage() {
                       billDiscountPaise > 0 ? "text-amber-600" : "text-muted-foreground/30"
                     }`}
                   >
-                    {billDiscountPaise > 0 ? `− ${paiseToRupees(billDiscountPaise)}` : "—"}
+                    {billDiscountPaise > 0 ? <>− <Money paise={billDiscountPaise} /></> : "—"}
                   </span>
                 </div>
               </div>
@@ -717,7 +840,7 @@ export default function CheckoutPage() {
                     applyTax && taxPaise > 0 ? "text-orange-600" : "text-muted-foreground/30"
                   }`}
                 >
-                  {applyTax && taxPaise > 0 ? `+ ${paiseToRupees(taxPaise)}` : "—"}
+                  {applyTax && taxPaise > 0 ? <>+ <Money paise={taxPaise} /></> : "—"}
                   </span>
                 </div>
             </div>
@@ -725,11 +848,21 @@ export default function CheckoutPage() {
             {/* Grand total */}
             <div className="px-4 py-3 border-t bg-muted/30 flex justify-between items-center">
               <span className="font-bold text-base tracking-wide">{t("checkout.total")}</span>
-              <span className="tabular-nums font-bold text-2xl">{paiseToRupees(totalPaise)}</span>
+              <span className="tabular-nums font-bold text-2xl"><Money paise={totalPaise} /></span>
             </div>
 
             {/* Action buttons */}
             <div className="px-4 pb-4 pt-2 flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setHoldCartOpen(true)}
+                disabled={cartItems.length === 0}
+                className="flex items-center gap-1.5 shrink-0"
+              >
+                <Package className="h-3.5 w-3.5" />
+                Hold
+              </Button>
               <Button
                 variant="outline"
                 size="sm"
@@ -744,7 +877,7 @@ export default function CheckoutPage() {
                 size="sm"
                 onClick={() => { setSaleError(""); setShowPayment(true); }}
                 disabled={cartItems.length === 0}
-                className="flex-1 bg-gradient-to-r from-primary to-indigo-600 hover:from-primary/90 hover:to-indigo-700 shadow-sm shadow-primary/25"
+                className="flex-1 bg-primary hover:bg-primary/90 shadow-sm shadow-primary/25"
               >
                 <ShoppingCart className="h-4 w-4 me-1.5" />
                 {t("checkout.payNow")}
@@ -796,10 +929,18 @@ export default function CheckoutPage() {
             </div>
 
             {customerStatus === "found" && foundCustomer && (
-              <div className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1.5">
-                <UserCheck className="h-3.5 w-3.5 shrink-0" />
-                <span className="font-medium truncate">{foundCustomer.display_name}</span>
-                <span className="ms-auto shrink-0 text-emerald-500">{foundCustomer.total_sales} {t("checkout.visits")}</span>
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5 text-xs text-teal-700 bg-teal-50 border border-teal-200 rounded-lg px-2.5 py-1.5">
+                  <UserCheck className="h-3.5 w-3.5 shrink-0" />
+                  <span className="font-medium truncate">{foundCustomer.display_name}</span>
+                  <span className="ms-auto shrink-0 text-teal-500">{foundCustomer.total_sales} {t("checkout.visits")}</span>
+                </div>
+                {foundCustomer.outstanding_paise > 0 && (
+                  <div className="flex items-center justify-between text-xs bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                    <span className="font-medium text-amber-700">Outstanding Balance</span>
+                    <span className="font-bold text-amber-900"><Money paise={foundCustomer.outstanding_paise} /></span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -879,11 +1020,89 @@ export default function CheckoutPage() {
             </div>
           </div>
 
+          {/* Serial capture for selected item */}
+          {selectedIdx !== null && cartItems[selectedIdx] && (
+            <div className="px-4 py-3 border-b bg-blue-50/50 space-y-3">
+              <div>
+                <h3 className="text-xs font-semibold text-blue-900 mb-2">
+                  Serial Numbers — {cartItems[selectedIdx].product_name}
+                </h3>
+                <p className="text-[10px] text-blue-700 mb-2.5">Optional — add serials for warranty tracking</p>
+
+                {/* Serial input form */}
+                <div className="space-y-2">
+                  <div className="flex gap-1.5">
+                    <Input
+                      value={serialInput}
+                      onChange={(e) => setSerialInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          addSerialToItem(selectedIdx, serialInput, warrantyMonthsInput ? parseInt(warrantyMonthsInput, 10) : undefined);
+                        }
+                      }}
+                      placeholder="e.g. SN-20260901-00123"
+                      className="text-xs h-8 font-mono flex-1"
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      max={120}
+                      value={warrantyMonthsInput}
+                      onChange={(e) => setWarrantyMonthsInput(e.target.value)}
+                      placeholder="Warranty (months)"
+                      className="text-xs h-8 px-2 border rounded w-24 font-mono focus:outline-none focus:ring-2 focus:ring-blue-200"
+                    />
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => addSerialToItem(selectedIdx, serialInput, warrantyMonthsInput ? parseInt(warrantyMonthsInput, 10) : undefined)}
+                    disabled={!serialInput.trim()}
+                    className="w-full text-xs h-7"
+                  >
+                    Add Serial
+                  </Button>
+                </div>
+
+                {/* Listed serials */}
+                {cartItems[selectedIdx].serials && cartItems[selectedIdx].serials!.length > 0 && (
+                  <div className="mt-2.5 space-y-1.5">
+                    {cartItems[selectedIdx].serials!.map((s, sidx) => (
+                      <div key={sidx} className="flex items-center justify-between gap-2 bg-white border border-blue-200 rounded px-2 py-1 text-[10px]">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-mono font-semibold truncate text-blue-900">{s.serial}</p>
+                          {s.warranty_months && (
+                            <p className="text-blue-600">{s.warranty_months} months warranty</p>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => removeSerialFromItem(selectedIdx, sidx)}
+                          className="text-blue-400 hover:text-red-600 transition-colors shrink-0 p-0.5"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Search results / keyboard hints */}
           <div className="flex-1 overflow-y-auto">
             {searchQuery.trim().length >= 2 ? (
               <>
-                {!searchResults || searchResults.results.length === 0 ? (
+                {searchLoading ? (
+                  <div className="divide-y">
+                    {[...Array(4)].map((_, i) => (
+                      <div key={i} className="px-4 py-3">
+                        <Skeleton className="h-4 w-full mb-1.5" />
+                        <Skeleton className="h-3 w-2/3" />
+                      </div>
+                    ))}
+                  </div>
+                ) : !searchResults || searchResults.results.length === 0 ? (
                   <div className="px-4 py-8 text-center">
                     <p className="text-sm text-muted-foreground">
                       {t("checkout.noProductsFound", { query: searchQuery })}
@@ -957,6 +1176,47 @@ export default function CheckoutPage() {
         </div>
       </div>
 
+      {/* Hold cart dialog */}
+      {holdCartOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-background rounded-xl shadow-2xl w-full max-w-sm space-y-4 p-5">
+            <h2 className="font-bold text-lg">Hold This Cart</h2>
+            <input
+              autoFocus
+              type="text"
+              placeholder="e.g., Customer Name or Order Number"
+              value={holdCartName}
+              onChange={(e) => setHoldCartName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSaveHeldCart();
+                if (e.key === "Escape") setHoldCartOpen(false);
+              }}
+              className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary/40"
+            />
+            <p className="text-xs text-muted-foreground">
+              {cartItems.length} item{cartItems.length !== 1 ? "s" : ""} · <Money paise={totalPaise} />
+            </p>
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setHoldCartOpen(false);
+                  setHoldCartName("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSaveHeldCart}
+                disabled={!holdCartName.trim()}
+              >
+                Hold Cart
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Payment modal */}
       {showPayment && (
         <PaymentModal
@@ -968,6 +1228,7 @@ export default function CheckoutPage() {
           onCancel={() => setShowPayment(false)}
           isLoading={isSaleLoading}
           error={saleError}
+          customer={foundCustomer}
         />
       )}
     </>

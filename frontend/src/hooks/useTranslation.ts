@@ -1,19 +1,23 @@
-import { useLanguageStore } from "@/store/languageStore";
-import { translations, type TranslationKey } from "@/lib/translations";
+import { useLanguageStore, dirFor } from "@/store/languageStore";
+import { translations } from "@/lib/translations";
 
 export function useTranslation() {
   const language = useLanguageStore((state) => state.language);
-  const isRTL = useLanguageStore((state) => state.isRTL);
   const setLanguage = useLanguageStore((state) => state.setLanguage);
 
-  const t = (key: TranslationKey): string => {
-    const translated = translations[language]?.[key];
-    if (!translated) {
-      // Fallback to English if translation missing
-      return translations.en[key] || key;
+  const t = (key: string): string => {
+    const parts = key.split(".");
+    const langTranslations = translations[language as keyof typeof translations] as Record<string, any>;
+    let current: unknown = langTranslations;
+    for (const part of parts) {
+      if (typeof current === "object" && current !== null) {
+        current = (current as Record<string, unknown>)[part];
+      } else {
+        return key;
+      }
     }
-    return translated;
+    return (current as string) || key;
   };
 
-  return { t, language, isRTL, setLanguage };
+  return { t, language, setLanguage, dirFor };
 }

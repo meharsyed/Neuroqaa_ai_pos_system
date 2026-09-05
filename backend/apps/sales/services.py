@@ -8,7 +8,7 @@ from apps.catalog.services import apply_stock_movement
 
 from apps.accounts.activity import log_activity
 
-from .models import Payment, Sale, SaleItem, Shift
+from .models import Payment, Sale, SaleItem, SaleItemSerial, Shift
 
 
 def _generate_sale_number(sale: Sale) -> str:
@@ -64,14 +64,15 @@ def create_sale(
 
     items: list of dicts with keys:
         product_id (int), qty (str/Decimal), unit_price_paise (int),
-        discount_paise (int, optional — item-level discount)
+        discount_paise (int, optional — item-level discount),
+        serials (list, optional — [{"serial": str, "warranty_months": int | None}])
 
     Steps:
       1. Lock all inventory rows in deterministic order (sorted by product_id)
          to prevent deadlocks on concurrent sales.
       2. Aggregate qty per product and guard against overselling.
       3. Create Sale, set the readable sale_number from the PK.
-      4. Create SaleItem rows.
+      4. Create SaleItem rows and associated SaleItemSerial records.
       5. Apply negative StockMovements via apply_stock_movement().
       6. Create Payment.
     """
@@ -149,7 +150,7 @@ def create_sale(
             item_discount = item.get("discount_paise", 0)
             item_subtotal = int(qty * unit_price) - item_discount
 
-            SaleItem.objects.create(
+            sale_item = SaleItem.objects.create(
                 sale=sale,
                 product_id=item["product_id"],
                 qty=qty,
@@ -157,6 +158,16 @@ def create_sale(
                 discount_paise=item_discount,
                 subtotal_paise=item_subtotal,
             )
+
+            # Create serial records if provided
+            serials_data = item.get("serials", [])
+            if serials_data:
+                for serial_entry in serials_data:
+                    SaleItemSerial.objects.create(
+                        sale_item=sale_item,
+                        serial=serial_entry.get("serial"),
+                        warranty_months=serial_entry.get("warranty_months"),
+                    )
 
             apply_stock_movement(
                 product=inventories[item["product_id"]].product,
@@ -166,13 +177,27 @@ def create_sale(
                 created_by=cashier,
             )
 
-        # Create Payment record
-        Payment.objects.create(
-            sale=sale,
-            method=payment_method,
-            amount_tendered_paise=amount_tendered_paise,
-            change_paise=change_paise,
-        )
+        # Handle payment: credit vs cash/card/etc
+        if payment_method == "credit":
+            # For credit sales, update customer's outstanding balance instead of creating a Payment
+            if sale.customer:
+                sale.customer.outstanding_paise += total_paise
+                sale.customer.save(update_fields=["outstanding_paise"])
+            # Create a Payment record for audit trail (without linking to sale)
+            Payment.objects.create(
+                sale=None,
+                method=payment_method,
+                amount_tendered_paise=total_paise,
+                change_paise=0,
+            )
+        else:
+            # Create Payment record for cash/card/etc
+            Payment.objects.create(
+                sale=sale,
+                method=payment_method,
+                amount_tendered_paise=amount_tendered_paise,
+                change_paise=change_paise,
+            )
 
     log_activity(
         "sale_created",

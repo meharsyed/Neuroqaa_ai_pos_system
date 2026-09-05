@@ -4,7 +4,13 @@ from rest_framework import serializers
 
 from apps.catalog.models import Product
 
-from .models import Payment, Sale, SaleItem, Shift
+from .models import Payment, Sale, SaleItem, SaleItemSerial, Shift
+
+
+class SaleItemSerialSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = SaleItemSerial
+        fields = ["id", "serial", "warranty_months"]
 
 
 class PaymentSerializer(serializers.ModelSerializer):
@@ -17,6 +23,7 @@ class SaleItemSerializer(serializers.ModelSerializer):
     product_sku = serializers.CharField(source="product.sku", read_only=True)
     product_name = serializers.CharField(source="product.name", read_only=True)
     product_unit = serializers.CharField(source="product.unit", read_only=True)
+    serials = SaleItemSerialSerializer(many=True, read_only=True)
 
     class Meta:
         model = SaleItem
@@ -30,6 +37,7 @@ class SaleItemSerializer(serializers.ModelSerializer):
             "unit_price_paise",
             "discount_paise",
             "subtotal_paise",
+            "serials",
         ]
 
 
@@ -78,11 +86,17 @@ class SaleSerializer(serializers.ModelSerializer):
 # ── Input serializers ──────────────────────────────────────────────────────
 
 
+class SaleItemSerialInputSerializer(serializers.Serializer):
+    serial = serializers.CharField(max_length=255)
+    warranty_months = serializers.IntegerField(required=False, allow_null=True)
+
+
 class SaleItemInputSerializer(serializers.Serializer):
     product_id = serializers.IntegerField()
     qty = serializers.DecimalField(max_digits=10, decimal_places=3, min_value=Decimal("0.001"))
     unit_price_paise = serializers.IntegerField(min_value=0)
     discount_paise = serializers.IntegerField(min_value=0, default=0)
+    serials = SaleItemSerialInputSerializer(many=True, required=False, default=list)
 
     def validate_product_id(self, value):
         if not Product.objects.filter(pk=value, is_active=True).exists():

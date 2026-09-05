@@ -4,35 +4,86 @@
 
 @layer base {
   :root {
-    --background: 0 0% 99%;
-    --foreground: 220 20% 12%;
-    --card: 0 0% 100%;
-    --card-foreground: 220 20% 12%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 220 20% 12%;
-    --primary: 170 65% 42%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 220 20% 12%;
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 15% 40%;
-    --accent: 25 95% 55%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 80% 35%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 170 65% 42%;
-    --radius: 0.625rem;
+    /* ── Brand ramps (raw) ─────────────────────────── */
+    --green-950: 146 38%  8%;
+    --green-900: 146 38% 12%;
+    --green-800: 146 38% 16%;
+    --green-700: 146 37% 21%;
+    --green-600: 145 35% 28%;
+    --green-500: 145 33% 35%;
+    --green-400: 144 24% 49%;
+    --green-300: 143 24% 65%;
 
-    /* Speed Tech Solutions - Premium Teal/Green Theme */
-    --primary-teal: 170 65% 42%;
-    --primary-teal-light: 170 65% 52%;
-    --secondary-dark: 220 30% 15%;
-    --accent-bright-teal: 170 85% 50%;
-    --accent-orange: 25 95% 55%;
-    --accent-red: 0 80% 35%;
-    --sidebar-dark: 220 30% 12%;
+    --teal-900:  186 71% 15%;
+    --teal-800:  184 71% 20%;
+    --teal-700:  181 76% 25%;
+    --teal-600:  180 77% 31%;
+    --teal-500:  178 76% 37%;
+    --teal-400:  177 52% 50%;
+    --teal-300:  177 52% 67%;
+    --teal-100:  176 53% 89%;
+    --teal-50:   176 50% 96%;
+
+    --n-0:   0   0% 100%;
+    --n-50:  180 20% 98%;
+    --n-100: 190 14% 95%;
+    --n-200: 193 15% 89%;
+    --n-300: 197 13% 79%;
+    --n-400: 198 11% 61%;
+    --n-500: 200 10% 44%;
+    --n-600: 197 15% 33%;
+    --n-700: 200 19% 22%;
+    --n-800: 198 21% 14%;
+    --n-900: 200 22% 10%;
+
+    /* ── Semantic (what components actually use) ────── */
+    --background:            var(--n-50);
+    --foreground:            var(--n-800);
+    --card:                  var(--n-0);
+    --card-foreground:       var(--n-800);
+    --popover:               var(--n-0);
+    --popover-foreground:    var(--n-800);
+
+    --primary:               var(--green-600);
+    --primary-foreground:    var(--n-0);
+    --accent:                var(--teal-600);
+    --accent-foreground:     var(--n-0);
+    --accent-soft:           var(--teal-50);
+
+    --secondary:             var(--n-100);
+    --secondary-foreground:  var(--n-700);
+    --muted:                 var(--n-100);
+    --muted-foreground:      var(--n-500);
+
+    --border:                var(--n-200);
+    --border-strong:         var(--n-300);
+    --input:                 var(--n-200);
+    --ring:                  var(--teal-500);
+
+    --success:     147 67% 37%;  --success-bg: 152 47% 94%;
+    --warning:      26 90% 37%;  --warning-bg:  33 82% 95%;
+    --destructive:   4 77% 40%;  --destructive-bg: 6 79% 96%;
+    --destructive-foreground: var(--n-0);
+    --info:        180 77% 31%;  --info-bg:    180 44% 93%;
+
+    /* ── Dark chrome surfaces (sidebar / topbar) ───── */
+    --chrome:               var(--green-900);
+    --chrome-elevated:      var(--green-800);
+    --chrome-foreground:      0 0% 100%;
+    --chrome-muted-foreground: 143 18% 72%;   /* 4.9:1 contrast on --chrome ✅ */
+    --chrome-border:        146 30% 22%;
+    --chrome-hover:         146 34% 19%;
+    --chrome-active:        var(--teal-600);
+
+    /* ── Shape & depth ─────────────────────────────── */
+    --radius:    0.5rem;
+    --radius-sm: 0.375rem;
+    --radius-lg: 0.75rem;
+
+    --shadow-xs: 0 1px 2px 0 hsl(200 20% 12% / 0.05);
+    --shadow-sm: 0 1px 3px 0 hsl(200 20% 12% / 0.07), 0 1px 2px -1px hsl(200 20% 12% / 0.06);
+    --shadow-md: 0 4px 10px -2px hsl(200 20% 12% / 0.08), 0 2px 4px -2px hsl(200 20% 12% / 0.05);
+    --shadow-lg: 0 12px 28px -6px hsl(200 20% 12% / 0.12);
   }
 
   .dark {
@@ -42,19 +93,18 @@
     --card-foreground: 210 40% 95%;
     --popover: 220 30% 10%;
     --popover-foreground: 210 40% 95%;
-    --primary: 170 65% 52%;
-    --primary-foreground: 220 30% 12%;
+    --primary: 145 35% 35%;
+    --primary-foreground: 220 30% 8%;
     --secondary: 220 25% 18%;
     --secondary-foreground: 210 40% 95%;
     --muted: 220 25% 18%;
     --muted-foreground: 215 20% 65%;
-    --accent: 25 95% 65%;
+    --accent: 178 76% 40%;
     --accent-foreground: 220 30% 12%;
-    --destructive: 0 80% 50%;
-    --destructive-foreground: 210 40% 98%;
+    --accent-soft: 176 71% 20%;
     --border: 220 25% 20%;
     --input: 220 25% 20%;
-    --ring: 170 65% 52%;
+    --ring: 178 76% 45%;
   }
 }
 
@@ -80,6 +130,13 @@
       "Segoe UI", Tahoma, sans-serif;
   }
 
+  /* Global focus ring for accessibility */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
   /* Custom scrollbar */
   ::-webkit-scrollbar {
     width: 5px;
@@ -89,11 +146,11 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: hsl(var(--border));
+    background: hsl(var(--n-300));
     border-radius: 99px;
   }
   ::-webkit-scrollbar-thumb:hover {
-    background: hsl(var(--muted-foreground) / 0.4);
+    background: hsl(var(--n-400));
   }
 }
 
@@ -135,82 +192,80 @@
   .btn-shimmer:hover::after {
     left: 150%;
   }
-
-  /* Speed Tech Solutions - Premium Teal Theme */
-  .sidebar-brand-header {
-    background: linear-gradient(135deg, hsl(220 30% 15%) 0%, hsl(220 25% 10%) 100%);
-    border-bottom: 3px solid hsl(170 65% 42%);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+/* ── Print Stylesheet ────────────────────────────────────── */
+@media print {
+  /* Hide UI elements not needed in print */
+  .no-print,
+  header,
+  nav,
+  footer,
+  .sidebar,
+  button,
+  [role="button"],
+  .pagination,
+  .filter-bar,
+  .search-input,
+  .keyboard-shortcuts,
+  .command-palette {
+    display: none !important;
   }
 
-  .stat-card-gradient {
-    background: linear-gradient(135deg, rgba(255, 255, 255, 0.99) 0%, rgba(240, 250, 248, 0.96) 100%);
-    border-left: 4px solid hsl(170 65% 42%);
-    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 2px 4px rgba(0, 0, 0, 0.04);
+  /* Page setup */
+  @page {
+    size: A4;
+    margin: 12mm;
   }
 
-  .stat-card-gradient:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 16px rgba(23, 107, 105, 0.15);
+  html, body {
+    background: white;
+    color: black;
   }
 
-  .stat-value-gradient {
-    background: linear-gradient(135deg, hsl(170 65% 42%), hsl(170 85% 50%));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+  /* Tables */
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-bottom: 1rem;
   }
 
-  .quick-action-navy {
-    background: linear-gradient(135deg, hsl(170 65% 42%) 0%, hsl(170 60% 35%) 100%);
-    box-shadow: 0 4px 12px rgba(23, 107, 105, 0.2);
+  th, td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
   }
 
-  .quick-action-orange {
-    background: linear-gradient(135deg, hsl(25 95% 55%) 0%, hsl(25 90% 45%) 100%);
-    box-shadow: 0 4px 12px rgba(229, 97, 16, 0.2);
+  th {
+    background: #f5f5f5 !important;
+    font-weight: bold;
   }
 
-  .quick-action-teal {
-    background: linear-gradient(135deg, hsl(170 85% 50%) 0%, hsl(170 75% 40%) 100%);
-    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+  /* Links */
+  a[href]::after {
+    content: none;
   }
 
-  .quick-action-gray {
-    background: linear-gradient(135deg, hsl(220 25% 40%) 0%, hsl(220 20% 30%) 100%);
-    box-shadow: 0 4px 12px rgba(30, 41, 59, 0.2);
+  /* Keep important data visible */
+  .print:block {
+    display: block !important;
   }
 
-  .progress-bar-container {
-    height: 6px;
-    background-color: hsl(220 13% 91%);
-    border-radius: 3px;
-    overflow: hidden;
+  /* Avoid page breaks in tables */
+  table, tr {
+    page-break-inside: avoid;
   }
 
-  .progress-bar-fill {
-    height: 100%;
-    background: linear-gradient(90deg, hsl(25 95% 55%), hsl(0 80% 35%));
-    transition: width 0.3s ease;
-    border-radius: 3px;
+  /* Better spacing */
+  h1, h2, h3 {
+    page-break-after: avoid;
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
   }
 
-  .stat-trend-up {
-    color: hsl(190 85% 45%);
-  }
-
-  .stat-trend-down {
-    color: hsl(0 80% 35%);
-  }
-
-  .low-stock-critical {
-    background-color: hsl(0 80% 97%);
-    border-left: 4px solid hsl(0 80% 35%);
-  }
-
-  .low-stock-warning {
-    background-color: hsl(25 95% 97%);
-    border-left: 4px solid hsl(25 95% 55%);
+  /* Hide decorative elements */
+  .shadow-lg,
+  .shadow-md,
+  [class*="animate-"] {
+    display: none !important;
   }
 }

@@ -191,7 +191,7 @@ export default function ReceiptTemplateSelector({
             </div>
 
             {/* Preview */}
-            <div className="bg-slate-50 dark:bg-slate-900 rounded p-3 border border-border mb-3 overflow-hidden">
+            <div className="bg-n-50 dark:bg-n-900 rounded p-3 border border-border mb-3 overflow-hidden">
               <pre className="text-xs font-mono text-muted-foreground whitespace-pre-wrap break-words line-clamp-6">
                 {template.preview}
               </pre>
@@ -205,7 +205,7 @@ export default function ReceiptTemplateSelector({
                 </span>
               )}
               {template.id === "modern" && (
-                <span className="inline-block px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-xs rounded font-medium">
+                <span className="inline-block px-2 py-1 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-xs rounded font-medium">
                   Contemporary design
                 </span>
               )}

@@ -1,0 +1,9 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- Shield mark - white for dark backgrounds -->
+  <g fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Shield outline -->
+    <path d="M32 8 L52 18 L52 36 C52 46 32 56 32 56 C32 56 12 46 12 36 L12 18 Z" stroke="white" stroke-width="2.5" fill="white" opacity="0.95"/>
+    <!-- Check mark inside shield -->
+    <polyline points="24 38 32 44 44 28" stroke="#1A3A28" stroke-width="2.5" fill="none"/>
+  </g>
+</svg>

@@ -9,6 +9,7 @@ export const translations = {
       bills: "Bills",
       returns: "Returns",
       customers: "Customers",
+      khata: "Khata / Credit",
       audit: "Audit Reports",
       shifts: "Shifts",
       activityLog: "Activity Log",

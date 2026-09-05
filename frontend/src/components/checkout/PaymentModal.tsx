@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { Banknote, CreditCard, Smartphone, CheckCircle2 } from "lucide-react";
+import { Banknote, CreditCard, Smartphone, CheckCircle2, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Money } from "@/components/ui/money";
 import { paiseToRupees } from "@/lib/catalog";
 import type { CartItem, PaymentMethod } from "@/types/sales";
+import type { Customer } from "@/types/customers";
 
 interface PaymentModalProps {
   cartItems: CartItem[];
@@ -14,12 +16,14 @@ interface PaymentModalProps {
   onCancel: () => void;
   isLoading: boolean;
   error?: string;
+  customer?: Customer | null;
 }
 
 const METHODS: { key: PaymentMethod; label: string; Icon: React.FC<{ className?: string }> }[] = [
   { key: "cash", label: "Cash", Icon: Banknote },
   { key: "card", label: "Card", Icon: CreditCard },
   { key: "upi", label: "UPI", Icon: Smartphone },
+  { key: "credit", label: "Khata", Icon: Wallet },
 ];
 
 export default function PaymentModal({
@@ -31,6 +35,7 @@ export default function PaymentModal({
   onCancel,
   isLoading,
   error,
+  customer,
 }: PaymentModalProps) {
   const [method, setMethod] = useState<PaymentMethod>("cash");
   const [tenderedStr, setTenderedStr] = useState(
@@ -40,6 +45,7 @@ export default function PaymentModal({
   const tenderedPaise = Math.round(parseFloat(tenderedStr || "0") * 100);
   const changePaise = Math.max(0, tenderedPaise - totalPaise);
   const isShort = method === "cash" && tenderedPaise < totalPaise;
+  const canPayOnCredit = customer !== null && customer !== undefined;
 
   return (
     <div
@@ -99,22 +105,45 @@ export default function PaymentModal({
           <div>
             <p className="text-xs font-medium text-muted-foreground mb-2 uppercase tracking-wide">Payment Method</p>
             <div className="flex gap-2">
-              {METHODS.map(({ key, label, Icon }) => (
-                <button
-                  key={key}
-                  onClick={() => setMethod(key)}
-                  className={`flex-1 flex flex-col items-center gap-1 py-3 rounded-lg border-2 text-sm font-medium transition-colors ${
-                    method === key
-                      ? "border-primary bg-primary/5 text-primary"
-                      : "border-border text-muted-foreground hover:border-primary/50"
-                  }`}
-                >
-                  <Icon className="h-5 w-5" />
-                  {label}
-                </button>
-              ))}
+              {METHODS.map(({ key, label, Icon }) => {
+                if (key === "credit" && !canPayOnCredit) return null;
+                return (
+                  <button
+                    key={key}
+                    onClick={() => setMethod(key)}
+                    className={`flex-1 flex flex-col items-center gap-1 py-3 rounded-lg border-2 text-sm font-medium transition-colors ${
+                      method === key
+                        ? "border-primary bg-primary/5 text-primary"
+                        : "border-border text-muted-foreground hover:border-primary/50"
+                    }`}
+                  >
+                    <Icon className="h-5 w-5" />
+                    {label}
+                  </button>
+                );
+              })}
             </div>
           </div>
+
+          {/* Customer credit info (only for credit method) */}
+          {method === "credit" && customer && (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-blue-700">Customer</span>
+                <span className="text-blue-900">{customer.display_name}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-blue-700">Current Outstanding</span>
+                <span className="text-blue-900 font-semibold"><Money paise={customer.outstanding_paise} /></span>
+              </div>
+              <div className="flex items-center justify-between pt-1 border-t border-blue-200">
+                <span className="font-medium text-blue-700">After This Sale</span>
+                <span className="text-blue-900 font-semibold tabular-nums">
+                  <Money paise={customer.outstanding_paise + totalPaise} />
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* Cash tendered + change (only for cash) */}
           {method === "cash" && (
@@ -165,7 +194,7 @@ export default function PaymentModal({
           <Button
             onClick={() => onConfirm(method, method === "cash" ? tenderedPaise : totalPaise)}
             className="flex-1"
-            disabled={isLoading || (method === "cash" && isShort)}
+            disabled={isLoading || (method === "cash" && isShort) || (method === "credit" && !canPayOnCredit)}
           >
             {isLoading ? (
               "Processing…"

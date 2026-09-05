@@ -113,13 +113,28 @@ class SaleItem(models.Model):
         return f"{self.qty} × {self.product.sku} @ {self.sale.sale_number}"
 
 
+class SaleItemSerial(models.Model):
+    sale_item = models.ForeignKey(SaleItem, on_delete=models.CASCADE, related_name="serials")
+    serial = models.CharField(max_length=255, db_index=True)
+    warranty_months = models.IntegerField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ("sale_item", "serial")
+        ordering = ["id"]
+
+    def __str__(self):
+        return f"Serial {self.serial} for {self.sale_item}"
+
+
 class Payment(models.Model):
     class Method(models.TextChoices):
         CASH = "cash", "Cash"
         CARD = "card", "Card"
         UPI = "upi", "UPI"
+        BANK_TRANSFER = "bank_transfer", "Bank Transfer"
+        CREDIT = "credit", "Khata / Credit"
 
-    sale = models.OneToOneField(Sale, on_delete=models.CASCADE, related_name="payment")
+    sale = models.OneToOneField(Sale, on_delete=models.CASCADE, related_name="payment", null=True, blank=True)
     method = models.CharField(max_length=20, choices=Method.choices, default=Method.CASH)
     amount_tendered_paise = models.BigIntegerField()
     change_paise = models.BigIntegerField(default=0)
