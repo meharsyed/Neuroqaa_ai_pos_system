@@ -1,14 +1,30 @@
 from decimal import Decimal
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
+from django.db.models import Sum
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from apps.catalog.models import Inventory, StockMovement
 from apps.catalog.services import apply_stock_movement
+from apps.customers.services import post_credit_entry
 
 from apps.accounts.activity import log_activity
 
 from .models import Payment, Sale, SaleItem, SaleItemSerial, Shift
+
+
+def _credit_reversed_for(sale: Sale) -> int:
+    """How much of this credit sale has already been given back (as a positive
+    number), so a void after a partial return does not double-refund."""
+    from apps.customers.models import CreditLedgerEntry
+
+    total = CreditLedgerEntry.objects.filter(
+        sale=sale,
+        kind__in=[CreditLedgerEntry.Kind.VOID, CreditLedgerEntry.Kind.RETURN],
+    ).aggregate(t=Coalesce(Sum("delta_paise"), 0))["t"]
+    return -total
 
 
 def _generate_sale_number(sale: Sale) -> str:
@@ -181,8 +197,17 @@ def create_sale(
         if payment_method == "credit":
             # For credit sales, update customer's outstanding balance instead of creating a Payment
             if sale.customer:
-                sale.customer.outstanding_paise += total_paise
-                sale.customer.save(update_fields=["outstanding_paise"])
+                # enforce_limit refuses the sale rather than letting the debt
+                # grow unbounded. Checked under the customer row lock.
+                post_credit_entry(
+                    customer=sale.customer,
+                    kind="sale",
+                    delta_paise=total_paise,
+                    sale=sale,
+                    note=f"Credit sale {sale.sale_number}",
+                    created_by=cashier,
+                    enforce_limit=True,
+                )
             # Link the Payment to the sale. With sale=None the receipt printed
             # "cash", every payment__method="credit" filter matched nothing, and
             # the aging report was dead. Nothing is tendered on a credit sale.
@@ -369,6 +394,21 @@ def create_return(
                 created_by=cashier,
             )
 
+        # Returning goods bought on khata reduces what is owed, capped at what
+        # is still outstanding against that sale.
+        if original_sale.customer and _is_credit_sale(original_sale):
+            refundable = original_sale.total_paise - _credit_reversed_for(original_sale)
+            reverse = min(return_subtotal, max(0, refundable))
+            if reverse > 0:
+                post_credit_entry(
+                    customer=original_sale.customer,
+                    kind="return",
+                    delta_paise=-reverse,
+                    sale=original_sale,
+                    note=f"Return {return_sale.sale_number} against {original_sale.sale_number}",
+                    created_by=cashier,
+                )
+
     log_activity(
         "return_created",
         user=cashier,
@@ -380,6 +420,14 @@ def create_return(
         },
     )
     return return_sale
+
+
+def _is_credit_sale(sale: Sale) -> bool:
+    """True when the sale was put on the customer's khata."""
+    try:
+        return sale.payment.method == "credit"
+    except ObjectDoesNotExist:
+        return False
 
 
 def void_sale(*, sale: Sale, voided_by) -> Sale:
@@ -399,6 +447,20 @@ def void_sale(*, sale: Sale, voided_by) -> Sale:
                 reference=f"VOID-{sale.sale_number}",
                 created_by=voided_by,
             )
+
+        # Reverse the khata charge. Without this, voiding a credit sale left
+        # the customer owing the full amount forever, with no sale to point at.
+        if sale.customer and _is_credit_sale(sale):
+            already = sale.total_paise - _credit_reversed_for(sale)
+            if already > 0:
+                post_credit_entry(
+                    customer=sale.customer,
+                    kind="void",
+                    delta_paise=-already,
+                    sale=sale,
+                    note=f"Voided credit sale {sale.sale_number}",
+                    created_by=voided_by,
+                )
 
         sale.status = Sale.Status.VOIDED
         sale.voided_by = voided_by

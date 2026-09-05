@@ -1,4 +1,5 @@
 import { apiClient } from "./axios";
+import { toast } from "./use-toast";
 import type { AuditReport, DailySummary, InventoryValuation } from "@/types/config";
 
 export const reportsApi = {
@@ -71,13 +72,21 @@ export function openReceiptPdf(saleId: number, template: ReceiptTemplate = "ther
       const blobUrl = URL.createObjectURL(r.data);
       const win = window.open(blobUrl, "_blank");
       if (!win) {
-        alert("Popup blocked. Please allow popups for this site.");
+        toast({
+          title: "Popup blocked",
+          description: "Allow popups for this site to view the receipt.",
+          variant: "error",
+        });
       }
     })
     .catch((err) => {
       console.error("Receipt PDF error:", err);
       const detail = err.response?.data?.detail || err.message;
-      alert(`Failed to load receipt: ${detail}`);
+      toast({
+        title: "Could not open the receipt",
+        description: detail,
+        variant: "error",
+      });
     });
 }
 

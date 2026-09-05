@@ -19,6 +19,7 @@ import { salesApi } from "@/lib/sales";
 import { customersApi } from "@/lib/customers";
 import { configApi } from "@/lib/config";
 import { openReceiptPdf, printReceipt, type ReceiptTemplate } from "@/lib/reports";
+import ShareReceiptButton from "@/components/ShareReceiptButton";
 import { useTranslation } from "@/lib/useTranslation";
 import { toast } from "@/lib/use-toast";
 import { useHeldCartsStore } from "@/store/heldCartsStore";
@@ -508,7 +509,7 @@ export default function CheckoutPage() {
           </div>
 
           <div className="flex flex-col gap-2 w-full">
-            <Button onClick={clearCart} size="lg" className="w-full bg-teal-600 hover:bg-teal-700">
+            <Button onClick={clearCart} size="lg" className="w-full">
               <ShoppingCart className="h-4 w-4 me-2" />
               {t("checkout.newSaleBtn")}
             </Button>
@@ -540,6 +541,14 @@ export default function CheckoutPage() {
                 <Link to="/dashboard">{t("checkout.dashboardBtn")}</Link>
               </Button>
             </div>
+            {/* Works for every receipt format — what is sent is a link to the
+                bill, since WhatsApp cannot be handed a file from a browser. */}
+            <ShareReceiptButton
+              saleId={completedSale.id}
+              saleNumber={completedSale.sale_number}
+              className="w-full"
+              size="md"
+            />
           </div>
         </div>
       </div>

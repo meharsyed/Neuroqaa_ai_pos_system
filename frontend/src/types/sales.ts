@@ -1,5 +1,18 @@
 export type PaymentMethod = "cash" | "card" | "upi" | "bank_transfer" | "credit";
 
+/** Everything needed to send a customer their bill. See apps/sales/sharing.py. */
+export interface ShareInfo {
+  /** False when sharing by link is turned off in Settings. */
+  enabled: boolean;
+  /** Signed, expiring public URL. Empty when disabled or no base URL is set. */
+  public_url: string;
+  message: string;
+  whatsapp_url: string;
+  /** Customer number in international form, or null. */
+  customer_phone: string | null;
+  expires_days: number;
+}
+
 export interface SerialInput {
   serial: string;
   warranty_months?: number | null;

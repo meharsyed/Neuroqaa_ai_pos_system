@@ -4,6 +4,8 @@ from django.contrib import admin
 from django.urls import include, path
 from drf_spectacular.views import SpectacularAPIView, SpectacularSwaggerView
 
+from apps.sales.public_views import public_receipt
+
 # Apply admin branding from settings
 admin.site.site_header = settings.ADMIN_SITE_HEADER
 admin.site.site_title = settings.ADMIN_SITE_TITLE
@@ -11,6 +13,8 @@ admin.site.index_title = settings.ADMIN_INDEX_TITLE
 
 urlpatterns = [
     path("admin/", admin.site.urls),
+    # Customer-facing receipt link. Signed + expiring; see apps/sales/sharing.py.
+    path("r/<str:token>/", public_receipt, name="public-receipt"),
     path("api/auth/", include("apps.accounts.urls")),
     path("api/", include("apps.catalog.urls")),
     path("api/", include("apps.sales.urls")),

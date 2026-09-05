@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Banknote, CreditCard, Smartphone, CheckCircle2, Wallet } from "lucide-react";
+import { AlertTriangle, Banknote, CheckCircle2, CreditCard, Landmark, Wallet } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Money } from "@/components/ui/money";
@@ -22,7 +22,7 @@ interface PaymentModalProps {
 const METHODS: { key: PaymentMethod; label: string; Icon: React.FC<{ className?: string }> }[] = [
   { key: "cash", label: "Cash", Icon: Banknote },
   { key: "card", label: "Card", Icon: CreditCard },
-  { key: "upi", label: "UPI", Icon: Smartphone },
+  { key: "bank_transfer", label: "Bank", Icon: Landmark },
   { key: "credit", label: "Khata", Icon: Wallet },
 ];
 
@@ -46,6 +46,13 @@ export default function PaymentModal({
   const changePaise = Math.max(0, tenderedPaise - totalPaise);
   const isShort = method === "cash" && tenderedPaise < totalPaise;
   const canPayOnCredit = customer !== null && customer !== undefined;
+
+  // null means unlimited. The server enforces this too — the UI just refuses
+  // to submit a sale it already knows will be rejected.
+  const creditLimitPaise = customer?.effective_credit_limit_paise ?? null;
+  const availablePaise = customer?.available_credit_paise ?? null;
+  const overLimit =
+    method === "credit" && availablePaise !== null && totalPaise > availablePaise;
 
   return (
     <div
@@ -127,21 +134,52 @@ export default function PaymentModal({
 
           {/* Customer credit info (only for credit method) */}
           {method === "credit" && customer && (
-            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm space-y-1">
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-blue-700">Customer</span>
-                <span className="text-blue-900">{customer.display_name}</span>
+            <div className="space-y-2">
+              <div className="rounded-lg border bg-accent-soft p-3 text-sm space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-muted-foreground">Customer</span>
+                  <span className="font-medium">{customer.display_name}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="font-medium text-muted-foreground">Currently owes</span>
+                  <span className="font-semibold tabular-nums">
+                    <Money paise={customer.outstanding_paise} />
+                  </span>
+                </div>
+                {creditLimitPaise !== null && (
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-muted-foreground">Credit limit</span>
+                    <span className="tabular-nums">
+                      <Money paise={creditLimitPaise} />
+                      {availablePaise !== null && (
+                        <span className="ml-1.5 text-xs text-muted-foreground">
+                          (<Money paise={availablePaise} /> left)
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between border-t pt-1">
+                  <span className="font-medium text-muted-foreground">After this sale</span>
+                  <span className="font-semibold tabular-nums">
+                    <Money paise={customer.outstanding_paise + totalPaise} />
+                  </span>
+                </div>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="font-medium text-blue-700">Current Outstanding</span>
-                <span className="text-blue-900 font-semibold"><Money paise={customer.outstanding_paise} /></span>
-              </div>
-              <div className="flex items-center justify-between pt-1 border-t border-blue-200">
-                <span className="font-medium text-blue-700">After This Sale</span>
-                <span className="text-blue-900 font-semibold tabular-nums">
-                  <Money paise={customer.outstanding_paise + totalPaise} />
-                </span>
-              </div>
+
+              {overLimit && (
+                <div className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive-bg px-3 py-2.5 text-sm text-destructive">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div>
+                    <p className="font-semibold">This sale would break the credit limit</p>
+                    <p className="text-xs">
+                      Only <Money paise={availablePaise ?? 0} /> of credit is left.
+                      Take a part payment in cash, collect against the khata first,
+                      or ask an owner to raise the limit.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -168,10 +206,10 @@ export default function PaymentModal({
                 )}
               </div>
               {changePaise > 0 && (
-                <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-4 py-2">
-                  <span className="text-sm font-medium text-green-700">Change</span>
-                  <span className="text-lg font-bold font-mono text-green-700">
-                    {paiseToRupees(changePaise)}
+                <div className="flex items-center justify-between rounded-lg border border-success/30 bg-success-bg px-4 py-2">
+                  <span className="text-sm font-medium text-success">Change</span>
+                  <span className="text-lg font-bold tabular-nums text-success">
+                    <Money paise={changePaise} />
                   </span>
                 </div>
               )}
@@ -194,7 +232,11 @@ export default function PaymentModal({
           <Button
             onClick={() => onConfirm(method, method === "cash" ? tenderedPaise : totalPaise)}
             className="flex-1"
-            disabled={isLoading || (method === "cash" && isShort) || (method === "credit" && !canPayOnCredit)}
+            disabled={
+              isLoading ||
+              (method === "cash" && isShort) ||
+              (method === "credit" && (!canPayOnCredit || overLimit))
+            }
           >
             {isLoading ? (
               "Processing…"

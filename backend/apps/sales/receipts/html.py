@@ -1,735 +1,354 @@
 """
-HTML Receipt Renderer for Browser Printing
+HTML receipt.
 
-Renders ReceiptContext to self-contained HTML with embedded CSS.
-Suitable for A4 invoices, thermal receipts, or browser preview.
-All assets embedded as data URIs.
+This is what a customer opens on their phone from a WhatsApp link, so it is
+mobile-first rather than an A4 page shrunk down: the item table reflows to
+stacked rows on a narrow screen, and everything is legible without zooming.
+
+It also prints correctly (`@media print`), which gives any office printer a
+path that does not involve ReportLab.
+
+Same layout discipline as the PDF: the only two filled blocks are the items
+header and the total, and every colour comes from the shared theme.
 """
 
+import base64
+import html as _html
+import os
+
 from .context import ReceiptContext
-from .utils import format_money
+from .theme import THEME
+from .utils import format_money_simple, num_to_words_pkr
+
+_ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+
+
+def _hex(color) -> str:
+    """ReportLab Color -> '#rrggbb'."""
+    return "#" + color.hexval()[2:]
+
+
+def _esc(value) -> str:
+    return _html.escape(str(value if value is not None else ""))
+
+
+def _logo_data_uri() -> str | None:
+    """Inline the logo so the page works with no network and no extra request."""
+    path = os.path.join(_ASSETS, "logo-invoice.png")
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "rb") as fh:
+            return "data:image/png;base64," + base64.b64encode(fh.read()).decode("ascii")
+    except OSError:
+        return None
+
+
+def _qr_svg(data: str, size: int = 96) -> str:
+    """Compact inline SVG QR. renderSVG would emit ~26KB for the same thing."""
+    try:
+        from reportlab.graphics.barcode import qr
+
+        widget = qr.QrCodeWidget(data, barBorder=0)
+        widget.draw()                      # builds the module matrix
+        matrix = widget.qr.modules
+        n = len(matrix)
+    except Exception:
+        return ""
+
+    rects = []
+    for y, row in enumerate(matrix):
+        x = 0
+        while x < n:
+            if row[x]:
+                run = 1
+                while x + run < n and row[x + run]:
+                    run += 1
+                rects.append(f'<rect x="{x}" y="{y}" width="{run}" height="1"/>')
+                x += run
+            else:
+                x += 1
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {n} {n}" '
+        f'width="{size}" height="{size}" shape-rendering="crispEdges" '
+        f'role="img" aria-label="Bill code">'
+        f'<rect width="{n}" height="{n}" fill="#fff"/>'
+        f'<g fill="#000">{"".join(rects)}</g></svg>'
+    )
+
+
+def _css(fmt: str) -> str:
+    green, green_dark = _hex(THEME.GREEN_800), _hex(THEME.GREEN_900)
+    teal, teal_soft = _hex(THEME.TEAL_600), _hex(THEME.TEAL_50)
+    ink, muted = _hex(THEME.NEUTRAL_800), _hex(THEME.NEUTRAL_500)
+    rule, faint = _hex(THEME.NEUTRAL_200), _hex(THEME.NEUTRAL_100)
+    danger = _hex(THEME.DANGER)
+    sheet_max = "460px" if fmt == "thermal" else "780px"
+
+    return f"""
+*,*::before,*::after{{box-sizing:border-box}}
+body{{margin:0;padding:16px 12px 40px;background:{faint};color:{ink};
+  font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+  -webkit-text-size-adjust:100%}}
+.sheet{{max-width:{sheet_max};margin:0 auto;background:#fff;border:1px solid {rule};
+  border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(20,40,30,.06)}}
+.bar{{height:6px;background:{green}}}
+.pad{{padding:20px 18px}}
+
+.top{{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}}
+.logo{{width:56px;flex:0 0 auto}} .logo img{{width:100%;height:auto;display:block}}
+.who{{flex:1 1 190px;min-width:0}}
+.shop{{margin:0;font-size:17px;font-weight:700;color:{green};letter-spacing:.01em}}
+.shop-meta{{margin:4px 0 0;font-size:12.5px;color:{muted};line-height:1.45}}
+.meta{{flex:1 1 170px;text-align:right;font-size:13px}}
+.meta .kind{{font-weight:700;color:{teal};letter-spacing:.06em;font-size:12.5px;
+  text-transform:uppercase;margin-bottom:6px}}
+.meta div{{color:{muted};margin-bottom:2px}}
+.meta b{{color:{ink};font-weight:600;margin-left:6px;
+  font-variant-numeric:tabular-nums;word-break:break-word}}
+hr.rule{{border:0;border-top:1.5px solid {teal};margin:16px 0}}
+
+.parties{{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:16px}}
+.party{{flex:1 1 150px;min-width:0}}
+.label{{font-size:11px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  color:{teal};margin-bottom:3px}}
+.voided{{color:{danger};font-weight:700}}
+
+table{{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}}
+thead th{{background:{green};color:#fff;font-size:11px;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;padding:9px 8px;text-align:right}}
+thead th:first-child,thead th.desc{{text-align:left}}
+tbody td{{padding:10px 8px;border-bottom:1px solid {rule};text-align:right;
+  font-size:14px;vertical-align:top}}
+tbody td:first-child,tbody td.desc{{text-align:left}}
+tbody tr:nth-child(even) td{{background:{teal_soft}}}
+.name{{font-weight:600}}
+.sku,.serial{{display:block;font-size:11.5px;color:{muted};margin-top:2px}}
+.serial{{color:{teal}}}
+
+.totals{{margin-top:18px;margin-left:auto;max-width:340px;font-variant-numeric:tabular-nums}}
+.totals .row{{display:flex;justify-content:space-between;gap:16px;padding:6px 10px;
+  border-bottom:1px solid {rule};font-size:14px}}
+.totals .row span:first-child{{color:{muted}}}
+.grand{{display:flex;justify-content:space-between;gap:16px;align-items:center;
+  background:{green};color:#fff;padding:12px;border-radius:6px;margin:8px 0}}
+.grand .lbl{{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+  opacity:.9}}
+.grand .amt{{font-size:20px;font-weight:700}}
+.due{{color:{danger};font-weight:700}}
+
+.notes{{margin-top:18px;font-size:13px;color:{muted}}}
+.notes .label{{color:{teal}}}
+.foot{{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:20px;
+  padding-top:16px;border-top:1px solid {rule}}}
+.foot .qr{{flex:0 0 auto;line-height:0}}
+.foot .qr svg{{border:1px solid {rule};border-radius:4px}}
+.band{{background:{teal_soft};color:{green_dark};text-align:center;
+  padding:12px;font-size:12.5px}}
+.band .vendor{{display:block;margin-top:3px;font-size:11px;color:{muted}}}
+
+.actions{{max-width:{sheet_max};margin:0 auto 14px;text-align:center}}
+.btn{{display:inline-block;border:0;border-radius:8px;background:{green};color:#fff;
+  font:600 15px/1 inherit;padding:13px 22px;cursor:pointer}}
+.btn:focus-visible{{outline:3px solid {teal};outline-offset:2px}}
+
+@media (max-width:520px){{
+  body{{padding:10px 8px 28px}}
+  .pad{{padding:16px 13px}}
+  .meta{{text-align:left;flex-basis:100%}}
+  thead{{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}}
+  tbody td{{display:block;border:0;padding:2px 0;text-align:left}}
+  tbody tr{{display:block;padding:12px 2px;border-bottom:1px solid {rule}}}
+  tbody tr:nth-child(even) td{{background:transparent}}
+  tbody tr:nth-child(even){{background:{teal_soft}}}
+  td.num::before{{content:attr(data-label);color:{muted};font-size:12px;
+    display:inline-block;min-width:92px}}
+  td.idx{{display:none}}
+  .totals{{max-width:none}}
+}}
+@media print{{
+  body{{background:#fff;padding:0}}
+  .actions{{display:none}}
+  .sheet{{border:0;border-radius:0;box-shadow:none;max-width:none}}
+  @page{{size:A4;margin:12mm}}
+}}
+"""
 
 
 def render(ctx: ReceiptContext, format_name: str = "a4") -> str:
-    """
-    Render ReceiptContext as HTML for browser printing.
+    fmt = "thermal" if format_name == "thermal" else "a4"
+    voided = ctx.status == "voided"
+    # The thermal PDF prints "Invoice #…" too, so the wording stays consistent.
+    kind = "Credit note" if ctx.is_return else ("Tax invoice" if fmt == "a4" else "Invoice")
 
-    Args:
-        ctx: ReceiptContext with all receipt data
-        format_name: "a4" or "thermal"
+    logo = _logo_data_uri()
+    logo_html = (
+        f'<div class="logo"><img src="{logo}" alt=""></div>' if logo else ""
+    )
 
-    Returns:
-        Self-contained HTML string
-    """
-    if format_name == "thermal":
-        return _render_thermal_html(ctx)
+    show_disc = any(i.discount_paise > 0 for i in ctx.items)
+
+    head_cells = ['<th>#</th>', '<th class="desc">Description</th>', "<th>Qty</th>", "<th>Rate</th>"]
+    if show_disc:
+        head_cells.append("<th>Disc</th>")
+    head_cells.append("<th>Amount</th>")
+
+    rows = []
+    for i, item in enumerate(ctx.items, 1):
+        serials = ""
+        if ctx.show_serial_numbers and item.serials:
+            serials = "".join(
+                f'<span class="serial">S/N {_esc(s.serial)}'
+                + (f" ({s.warranty_months}m warranty)" if s.warranty_months else "")
+                + "</span>"
+                for s in item.serials
+            )
+        cells = [
+            f'<td class="idx">{i}</td>',
+            f'<td class="desc"><span class="name">{_esc(item.product_name)}</span>'
+            f'<span class="sku">{_esc(item.product_sku)}</span>{serials}</td>',
+            f'<td class="num" data-label="Qty">{_esc(item.quantity)}</td>',
+            f'<td class="num" data-label="Rate">{format_money_simple(item.unit_price_paise)}</td>',
+        ]
+        if show_disc:
+            disc = format_money_simple(item.discount_paise) if item.discount_paise else "—"
+            cells.append(f'<td class="num" data-label="Discount">{disc}</td>')
+        cells.append(
+            f'<td class="num" data-label="Amount">'
+            f"<b>{format_money_simple(item.line_total_paise)}</b></td>"
+        )
+        rows.append("<tr>" + "".join(cells) + "</tr>")
+
+    total_rows = [
+        f'<div class="row"><span>Subtotal</span>'
+        f"<span>{format_money_simple(ctx.subtotal_paise)}</span></div>"
+    ]
+    if ctx.item_discounts_paise:
+        total_rows.append(
+            f'<div class="row"><span>Item discounts</span>'
+            f"<span>-{format_money_simple(ctx.item_discounts_paise)}</span></div>"
+        )
+    if ctx.bill_discount_paise:
+        total_rows.append(
+            f'<div class="row"><span>Bill discount</span>'
+            f"<span>-{format_money_simple(ctx.bill_discount_paise)}</span></div>"
+        )
+    if ctx.tax_paise:
+        pct = f" ({ctx.tax_pct:g}%)" if ctx.tax_pct else ""
+        total_rows.append(
+            f'<div class="row"><span>Tax{pct}</span>'
+            f"<span>{format_money_simple(ctx.tax_paise)}</span></div>"
+        )
+
+    grand = (
+        '<div class="grand"><span class="lbl">Total</span>'
+        f'<span class="amt">Rs {format_money_simple(ctx.total_paise)}</span></div>'
+    )
+
+    after = []
+    method = (ctx.payment_method or "cash").replace("_", " ").title()
+    if (ctx.payment_method or "").lower() == "credit":
+        after.append('<div class="row"><span>Paid now</span><span>0.00</span></div>')
+        after.append(
+            '<div class="row"><span class="due">Balance due (Khata)</span>'
+            f'<span class="due">{format_money_simple(ctx.total_paise)}</span></div>'
+        )
     else:
-        return _render_a4_html(ctx)
+        after.append(
+            f'<div class="row"><span>Paid ({_esc(method)})</span>'
+            f"<span>{format_money_simple(ctx.tendered_paise)}</span></div>"
+        )
+        if ctx.change_paise:
+            after.append(
+                f'<div class="row"><span>Change</span>'
+                f"<span>{format_money_simple(ctx.change_paise)}</span></div>"
+            )
 
-
-def _render_a4_html(ctx: ReceiptContext) -> str:
-    """Render A4 invoice layout"""
-
-    items_html = ""
-    for idx, item in enumerate(ctx.items, 1):
-        disc_display = "—" if item.discount_paise == 0 else f"-{format_money(item.discount_paise, include_symbol=False)}"
-        items_html += f"""
-        <tr>
-            <td class="col-num">{idx}</td>
-            <td class="col-desc">
-                <div class="item-name">{item.product_name}</div>
-                <div class="item-sku">{item.product_sku}</div>
-            </td>
-            <td class="col-qty">{item.quantity}</td>
-            <td class="col-price text-right">{format_money(item.unit_price_paise, include_symbol=False)}</td>
-            <td class="col-disc text-right">{disc_display}</td>
-            <td class="col-amt text-right">{format_money(item.line_total_paise, include_symbol=False)}</td>
-        </tr>
-        """
-
-    # Build totals rows
-    totals_rows = f"""
-        <tr>
-            <td colspan="5" class="label">Subtotal</td>
-            <td class="text-right">{format_money(ctx.subtotal_paise, include_symbol=False)}</td>
-        </tr>
-    """
-
-    if ctx.bill_discount_paise:
-        totals_rows += f"""
-        <tr>
-            <td colspan="5" class="label">Bill Discount</td>
-            <td class="text-right">-{format_money(ctx.bill_discount_paise, include_symbol=False)}</td>
-        </tr>
-        """
-
-    if ctx.tax_paise:
-        totals_rows += f"""
-        <tr>
-            <td colspan="5" class="label">Tax ({ctx.tax_pct:.0f}%)</td>
-            <td class="text-right">{format_money(ctx.tax_paise, include_symbol=False)}</td>
-        </tr>
-        """
-
-    totals_rows += f"""
-        <tr class="total-row">
-            <td colspan="5" class="label">TOTAL</td>
-            <td class="text-right">Rs {format_money(ctx.total_paise, include_symbol=False)}</td>
-        </tr>
-    """
-
-    if ctx.tendered_paise:
-        totals_rows += f"""
-        <tr>
-            <td colspan="5" class="label">Paid ({(ctx.payment_method or 'CASH').upper()})</td>
-            <td class="text-right">{format_money(ctx.tendered_paise, include_symbol=False)}</td>
-        </tr>
-        """
-
-    if ctx.change_paise:
-        totals_rows += f"""
-        <tr>
-            <td colspan="5" class="label">Change</td>
-            <td class="text-right">{format_money(ctx.change_paise, include_symbol=False)}</td>
-        </tr>
-        """
+    qr = _qr_svg(f"{ctx.sale_number}|{ctx.total_paise}|{ctx.created_at_formatted}")
+    customer = _esc(ctx.customer_name or "Walk-in Customer")
+    phone = f'<div>{_esc(ctx.customer_phone)}</div>' if ctx.customer_phone else ""
+    status_html = (
+        '<div class="voided">VOIDED</div>' if voided else "<div>Completed</div>"
+    )
+    contact = " · ".join(x for x in (ctx.shop_phone, ctx.shop_email) if x)
 
     return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Invoice {ctx.sale_number}</title>
-    <style>
-        * {{
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }}
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="{_hex(THEME.GREEN_800)}">
+<title>{_esc(ctx.sale_number)} — {_esc(ctx.shop_name)}</title>
+<style>{_css(fmt)}</style>
+</head><body>
 
-        body {{
-            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-            background: #f5f5f5;
-            padding: 20px;
-        }}
+<div class="actions">
+  <button class="btn" type="button" onclick="window.print()">Print this bill</button>
+</div>
 
-        .container {{
-            max-width: 210mm;
-            height: 297mm;
-            margin: 0 auto;
-            background: white;
-            padding: 14mm;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-        }}
+<div class="sheet">
+  <div class="bar"></div>
+  <div class="pad">
 
-        @page {{
-            size: A4;
-            margin: 12mm;
-        }}
-
-        @media print {{
-            body {{ padding: 0; background: white; }}
-            .container {{ max-width: 100%; height: auto; margin: 0; padding: 12mm; box-shadow: none; }}
-            .no-print {{ display: none; }}
-        }}
-
-        /* Header */
-        .header {{
-            display: flex;
-            gap: 1rem;
-            margin-bottom: 1rem;
-            padding-bottom: 0.5rem;
-            border-bottom: 0.8px solid #e5e7eb;
-        }}
-
-        .logo {{
-            width: 22mm;
-            height: 22mm;
-            background: #e5e7eb;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #6b7280;
-            font-size: 0.75rem;
-            font-weight: bold;
-        }}
-
-        .shop-info {{
-            flex: 1;
-        }}
-
-        .shop-name {{
-            font-size: 8.5pt;
-            font-weight: bold;
-            color: #065f46;
-            margin-bottom: 0.25rem;
-        }}
-
-        .shop-address {{
-            font-size: 7.5pt;
-            color: #6b7280;
-            line-height: 1.3;
-            margin-bottom: 0.25rem;
-        }}
-
-        .invoice-header {{
-            text-align: right;
-            flex: 1;
-        }}
-
-        .invoice-title {{
-            font-size: 9pt;
-            font-weight: bold;
-            color: #0d9488;
-            margin-bottom: 0.25rem;
-        }}
-
-        .invoice-details {{
-            font-size: 8pt;
-            color: #1f2937;
-            line-height: 1.3;
-        }}
-
-        /* Rule */
-        hr {{
-            border: none;
-            border-top: 0.8px solid #e5e7eb;
-            margin: 0.4rem 0;
-        }}
-
-        /* Bill-to and Payment */
-        .info-section {{
-            display: flex;
-            gap: 1rem;
-            margin: 0.5rem 0 1rem 0;
-            font-size: 8pt;
-        }}
-
-        .info-block {{
-            flex: 1;
-        }}
-
-        .info-label {{
-            font-weight: bold;
-            color: #0d9488;
-            margin-bottom: 0.2rem;
-        }}
-
-        .info-value {{
-            color: #1f2937;
-        }}
-
-        .info-muted {{
-            color: #6b7280;
-        }}
-
-        /* Items table */
-        .items-section {{
-            margin: 1rem 0;
-        }}
-
-        table {{
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 8pt;
-        }}
-
-        table thead {{
-            background-color: #047857;
-            color: white;
-            font-weight: bold;
-        }}
-
-        table thead th {{
-            padding: 0.3rem;
-            text-align: left;
-            border-bottom: 0.5px solid #d1d5db;
-        }}
-
-        table tbody td {{
-            padding: 0.3rem;
-            color: #1f2937;
-            vertical-align: top;
-        }}
-
-        table tbody tr:nth-child(even) {{
-            background-color: #f0fdfa;
-        }}
-
-        .col-num {{ width: 4%; text-align: center; }}
-        .col-desc {{ width: 40%; }}
-        .col-qty {{ width: 7.5%; text-align: center; }}
-        .col-price {{ width: 15%; }}
-        .col-disc {{ width: 13%; }}
-        .col-amt {{ width: 20%; }}
-
-        .item-name {{
-            font-weight: bold;
-            color: #1f2937;
-        }}
-
-        .item-sku {{
-            font-size: 6pt;
-            color: #9ca3af;
-        }}
-
-        .text-right {{
-            text-align: right;
-        }}
-
-        /* Totals section */
-        .totals-section {{
-            display: flex;
-            gap: 1rem;
-            margin: 1rem 0;
-        }}
-
-        .notes {{
-            flex: 1;
-            font-size: 8pt;
-            color: #6b7280;
-            line-height: 1.4;
-        }}
-
-        .totals-table {{
-            flex: 1;
-        }}
-
-        .totals-table table {{
-            width: 100%;
-        }}
-
-        .totals-table tr {{
-            font-size: 8.5pt;
-        }}
-
-        .totals-table .label {{
-            text-align: left;
-            color: #1f2937;
-        }}
-
-        .total-row {{
-            background-color: #047857;
-            color: white;
-            font-weight: bold;
-            font-size: 10pt;
-        }}
-
-        .total-row td {{
-            padding: 0.4rem !important;
-            color: white;
-        }}
-
-        /* Signature block */
-        .signature-section {{
-            margin-top: 2rem;
-            display: flex;
-            gap: 2rem;
-        }}
-
-        .qr {{
-            width: 18mm;
-            height: 18mm;
-            background: #f3f4f6;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: #9ca3af;
-            font-size: 6pt;
-        }}
-
-        .sig-lines {{
-            flex: 1;
-            display: flex;
-            gap: 2rem;
-        }}
-
-        .sig-block {{
-            flex: 1;
-        }}
-
-        .sig-line {{
-            border-top: 1px solid #1f2937;
-            margin: 3rem 0 0.2rem 0;
-            height: 0;
-        }}
-
-        .sig-label {{
-            font-size: 7pt;
-            color: #6b7280;
-            text-align: center;
-        }}
-
-        /* Footer */
-        .footer {{
-            background-color: #f0fdfa;
-            color: #0d9488;
-            text-align: center;
-            font-size: 7.5pt;
-            padding: 0.3rem;
-            margin-top: 1rem;
-            border-top: 0.8px solid #e5e7eb;
-        }}
-
-        .print-button {{
-            display: block;
-            margin: 1rem auto;
-            padding: 0.5rem 1rem;
-            background: #047857;
-            color: white;
-            border: none;
-            border-radius: 0.25rem;
-            cursor: pointer;
-            font-size: 0.875rem;
-        }}
-
-        .print-button:hover {{
-            background: #065f46;
-        }}
-    </style>
-</head>
-<body>
-    <button class="print-button no-print" onclick="window.print()">Print Receipt</button>
-
-    <div class="container">
-        <!-- Header -->
-        <div class="header">
-            <div class="logo">LOGO</div>
-            <div class="shop-info">
-                <div class="shop-name">{ctx.shop_name}</div>
-                <div class="shop-address">
-                    {ctx.shop_address}<br>
-                    {ctx.shop_phone}
-                </div>
-            </div>
-            <div class="invoice-header">
-                <div class="invoice-title">TAX INVOICE</div>
-                <div class="invoice-details">
-                    No.&nbsp;&nbsp;{ctx.sale_number}<br>
-                    Date&nbsp;&nbsp;{ctx.created_at_formatted}<br>
-                    Time&nbsp;&nbsp;{ctx.created_at_time}<br>
-                    Cashier&nbsp;&nbsp;{ctx.cashier_name}
-                </div>
-            </div>
-        </div>
-
-        <hr>
-
-        <!-- Bill-to and Payment Info -->
-        <div class="info-section">
-            <div class="info-block">
-                <div class="info-label">BILL TO</div>
-                <div class="info-value">{ctx.customer_name or 'Walk-in Customer'}</div>
-                <div class="info-muted">{ctx.customer_phone or '—'}</div>
-            </div>
-            <div class="info-block">
-                <div class="info-label">PAYMENT</div>
-                <div class="info-value">{(ctx.payment_method or 'CASH').upper()}</div>
-                <div class="info-muted">{(ctx.status or 'COMPLETED').upper()}</div>
-            </div>
-        </div>
-
-        <!-- Items -->
-        <div class="items-section">
-            <table>
-                <thead>
-                    <tr>
-                        <th class="col-num">#</th>
-                        <th class="col-desc">DESCRIPTION</th>
-                        <th class="col-qty">QTY</th>
-                        <th class="col-price">RATE</th>
-                        <th class="col-disc">DISC</th>
-                        <th class="col-amt">AMOUNT</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {items_html}
-                </tbody>
-            </table>
-        </div>
-
-        <!-- Totals and Notes -->
-        <div class="totals-section">
-            <div class="notes">
-                {ctx.receipt_footer or 'Thank you for your business!'}
-            </div>
-            <div class="totals-table">
-                <table>
-                    <tbody>
-                        {totals_rows}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Signature -->
-        <div class="signature-section">
-            <div class="qr">QR</div>
-            <div class="sig-lines">
-                <div class="sig-block">
-                    <div class="sig-line"></div>
-                    <div class="sig-label">Customer Signature</div>
-                </div>
-                <div class="sig-block">
-                    <div class="sig-line"></div>
-                    <div class="sig-label">For {ctx.shop_name}</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Footer -->
-        <div class="footer">
-            {ctx.receipt_header or 'A name of Trust, Reliability and Quality!'}
-            <br>
-            Powered by Neuroqaa.ai
-        </div>
+    <div class="top">
+      {logo_html}
+      <div class="who">
+        <h1 class="shop">{_esc(ctx.shop_name)}</h1>
+        <p class="shop-meta">{_esc(ctx.shop_address)}<br>{_esc(contact)}</p>
+      </div>
+      <div class="meta">
+        <div class="kind">{_esc(kind)}</div>
+        <div>No.<b>{_esc(ctx.sale_number)}</b></div>
+        <div>Date<b>{_esc(ctx.created_at_formatted)}, {_esc(ctx.created_at_time)}</b></div>
+        <div>Served by<b>{_esc(ctx.cashier_name)}</b></div>
+      </div>
     </div>
-</body>
-</html>
-"""
 
+    <hr class="rule">
 
-def _render_thermal_html(ctx: ReceiptContext) -> str:
-    """Render thermal (80mm) receipt layout"""
-
-    items_html = ""
-    for item in ctx.items:
-        items_html += f"""
-        <tr>
-            <td class="col-item">
-                <div class="item-name">{item.product_name}</div>
-                <div class="item-sku">{item.product_sku}</div>
-            </td>
-            <td class="col-qty">{item.quantity}</td>
-            <td class="col-amt">{format_money(item.line_total_paise, include_symbol=False)}</td>
-        </tr>
-        """
-
-    totals_html = f"""
-        <tr><td colspan="3"><div class="sep-line"></div></td></tr>
-        <tr>
-            <td class="label">Subtotal:</td>
-            <td colspan="2" class="amount">{format_money(ctx.subtotal_paise, include_symbol=False)}</td>
-        </tr>
-    """
-
-    if ctx.bill_discount_paise:
-        totals_html += f"""
-        <tr>
-            <td class="label">Bill Disc:</td>
-            <td colspan="2" class="amount">-{format_money(ctx.bill_discount_paise, include_symbol=False)}</td>
-        </tr>
-        """
-
-    if ctx.tax_paise:
-        totals_html += f"""
-        <tr>
-            <td class="label">Tax ({ctx.tax_pct:.0f}%):</td>
-            <td colspan="2" class="amount">{format_money(ctx.tax_paise, include_symbol=False)}</td>
-        </tr>
-        """
-
-    totals_html += f"""
-        <tr class="total-row">
-            <td class="label">TOTAL:</td>
-            <td colspan="2" class="amount">Rs {format_money(ctx.total_paise, include_symbol=False)}</td>
-        </tr>
-    """
-
-    if ctx.tendered_paise:
-        totals_html += f"""
-        <tr>
-            <td class="label">Paid:</td>
-            <td colspan="2" class="amount">{format_money(ctx.tendered_paise, include_symbol=False)}</td>
-        </tr>
-        """
-
-    if ctx.change_paise:
-        totals_html += f"""
-        <tr>
-            <td class="label">Change:</td>
-            <td colspan="2" class="amount">{format_money(ctx.change_paise, include_symbol=False)}</td>
-        </tr>
-        """
-
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Receipt {ctx.sale_number}</title>
-    <style>
-        * {{
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }}
-
-        body {{
-            font-family: 'Courier New', monospace;
-            background: #f5f5f5;
-            padding: 20px;
-        }}
-
-        .receipt {{
-            width: 80mm;
-            margin: 0 auto;
-            background: white;
-            padding: 8px;
-            box-shadow: 0 0 10px rgba(0,0,0,0.1);
-            font-size: 11px;
-            line-height: 1.3;
-        }}
-
-        @page {{
-            size: 80mm auto;
-            margin: 0;
-        }}
-
-        @media print {{
-            body {{ padding: 0; background: white; }}
-            .receipt {{ width: 100%; margin: 0; box-shadow: none; padding: 4mm; }}
-        }}
-
-        .header {{
-            text-align: center;
-            margin-bottom: 1rem;
-        }}
-
-        .shop-name {{
-            font-weight: bold;
-            font-size: 11px;
-            margin-bottom: 0.25rem;
-        }}
-
-        .shop-addr {{
-            font-size: 7px;
-            color: #666;
-            margin-bottom: 0.5rem;
-        }}
-
-        .receipt-title {{
-            font-weight: bold;
-            font-size: 9px;
-            margin-bottom: 0.25rem;
-        }}
-
-        .meta {{
-            font-size: 7px;
-            color: #666;
-            margin-bottom: 0.5rem;
-        }}
-
-        .sep-line {{
-            border-top: 1px solid #000;
-            margin: 0.3rem 0;
-        }}
-
-        table {{
-            width: 100%;
-            font-size: 8px;
-            margin-bottom: 0.5rem;
-        }}
-
-        table td {{
-            padding: 0.2rem 0;
-        }}
-
-        .col-item {{ width: 55%; }}
-        .col-qty {{ width: 15%; text-align: center; }}
-        .col-amt {{ width: 30%; text-align: right; }}
-
-        .item-name {{
-            font-weight: bold;
-        }}
-
-        .item-sku {{
-            font-size: 6px;
-            color: #999;
-        }}
-
-        .label {{
-            text-align: left;
-        }}
-
-        .amount {{
-            text-align: right;
-            font-family: 'Courier New', monospace;
-        }}
-
-        .total-row {{
-            font-weight: bold;
-            border-top: 1px solid #000;
-            border-bottom: 1px solid #000;
-        }}
-
-        .total-row .label {{
-            font-size: 10px;
-        }}
-
-        .total-row .amount {{
-            font-size: 10px;
-        }}
-
-        .footer {{
-            text-align: center;
-            font-size: 6px;
-            color: #666;
-            margin-top: 0.5rem;
-        }}
-
-        .print-button {{
-            display: block;
-            margin: 1rem auto;
-            padding: 0.5rem 1rem;
-            background: #047857;
-            color: white;
-            border: none;
-            border-radius: 0.25rem;
-            cursor: pointer;
-        }}
-
-        .no-print {{
-            display: block;
-        }}
-
-        @media print {{
-            .no-print {{ display: none; }}
-        }}
-    </style>
-</head>
-<body>
-    <button class="print-button no-print" onclick="window.print()">Print Receipt</button>
-
-    <div class="receipt">
-        <!-- Header -->
-        <div class="header">
-            <div class="shop-name">{ctx.shop_name}</div>
-            <div class="shop-addr">
-                {ctx.shop_address}<br>
-                {ctx.shop_phone}
-            </div>
-            <div class="receipt-title">INVOICE #{ctx.sale_number}</div>
-            <div class="meta">
-                {ctx.created_at_formatted} {ctx.created_at_time}
-            </div>
-        </div>
-
-        <!-- Items -->
-        <table>
-            <tbody>
-                <tr><td colspan="3"><div class="sep-line"></div></td></tr>
-                {items_html}
-                {totals_html}
-            </tbody>
-        </table>
-
-        <!-- Footer -->
-        <div class="footer">
-            {ctx.receipt_footer or 'Thank you!'}<br>
-            Powered by Neuroqaa.ai
-        </div>
+    <div class="parties">
+      <div class="party">
+        <div class="label">Bill to</div>
+        <div>{customer}</div>
+        {phone}
+      </div>
+      <div class="party">
+        <div class="label">Payment</div>
+        <div>{_esc(method)}</div>
+        {status_html}
+      </div>
     </div>
-</body>
-</html>
-"""
+
+    <table>
+      <thead><tr>{"".join(head_cells)}</tr></thead>
+      <tbody>{"".join(rows)}</tbody>
+    </table>
+
+    <div class="totals">
+      {"".join(total_rows)}
+      {grand}
+      {"".join(after)}
+    </div>
+
+    <div class="notes">
+      <div class="label">Amount in words</div>
+      {_esc(num_to_words_pkr(ctx.total_paise))}
+      {f'<p>{_esc(ctx.receipt_footer)}</p>' if ctx.receipt_footer else ""}
+    </div>
+
+    <div class="foot">
+      <div class="qr">{qr}</div>
+      <div class="notes" style="margin:0">
+        Keep this bill for warranty and returns.<br>
+        Scan the code to identify this sale.
+      </div>
+    </div>
+
+  </div>
+  <div class="band">
+    {_esc(ctx.receipt_header)}
+    <span class="vendor">Powered by Neuroqaa.ai</span>
+  </div>
+</div>
+
+</body></html>"""

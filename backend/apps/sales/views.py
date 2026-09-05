@@ -200,6 +200,44 @@ class SaleViewSet(
         response["Content-Disposition"] = f'inline; filename="{fname}"'
         return response
 
+    @extend_schema(summary="Receipt as printable HTML (any browser, no ReportLab)")
+    @action(detail=True, methods=["get"], url_path="receipt/html")
+    def receipt_html(self, request, pk=None):
+        from apps.config.utils import get_all_settings
+
+        from .receipts import build_receipt_context
+        from .receipts import html as receipt_html_renderer
+
+        sale = (
+            Sale.objects.select_related("cashier", "payment", "customer")
+            .prefetch_related("items__product", "items__serials")
+            .get(pk=pk)
+        )
+        fmt = request.query_params.get("format", "a4")
+        ctx = build_receipt_context(sale, get_all_settings())
+        return HttpResponse(
+            receipt_html_renderer.render(ctx, format_name=fmt),
+            content_type="text/html; charset=utf-8",
+        )
+
+    @extend_schema(
+        summary="Shareable link and pre-written WhatsApp message for this bill",
+        description=(
+            "WhatsApp cannot be handed a file from a browser, so sharing a bill "
+            "means sending a signed, expiring link the customer can open."
+        ),
+    )
+    @action(detail=True, methods=["get"], url_path="share")
+    def share(self, request, pk=None):
+        from .sharing import build_share_payload
+
+        sale = (
+            Sale.objects.select_related("cashier", "payment", "customer")
+            .prefetch_related("items__product")
+            .get(pk=pk)
+        )
+        return Response(build_share_payload(sale, request))
+
     @extend_schema(summary="Send receipt to thermal printer over network")
     @action(detail=True, methods=["post"], url_path="receipt/print")
     def receipt_print(self, request, pk=None):

@@ -17,6 +17,7 @@ import { Money } from "@/components/ui/money";
 import { salesApi } from "@/lib/sales";
 import { configApi } from "@/lib/config";
 import { openReceiptPdf, printReceipt, type ReceiptTemplate } from "@/lib/reports";
+import ShareReceiptButton from "@/components/ShareReceiptButton";
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/lib/use-toast";
 import type { Sale } from "@/types/sales";
@@ -239,6 +240,7 @@ function SaleDetailModal({
                 >
                   <Printer className="h-3.5 w-3.5 mr-1.5" /> Send to Thermal Printer
                 </Button>
+                <ShareReceiptButton saleId={sale.id} saleNumber={sale.sale_number} />
               </>
             )}
             {canVoid && sale.status === "completed" && (

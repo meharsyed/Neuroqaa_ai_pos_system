@@ -119,8 +119,14 @@ class SaleItemSerial(models.Model):
     warranty_months = models.IntegerField(null=True, blank=True)
 
     class Meta:
-        unique_together = ("sale_item", "serial")
         ordering = ["id"]
+        constraints = [
+            # A serial identifies one physical unit, so it can be sold exactly
+            # once across the whole system. Scoping uniqueness to the sale_item
+            # let the same camera be sold on unlimited separate invoices, which
+            # defeats warranty lookup.
+            models.UniqueConstraint(name="uniq_serial_global", fields=["serial"]),
+        ]
 
     def __str__(self):
         return f"Serial {self.serial} for {self.sale_item}"
