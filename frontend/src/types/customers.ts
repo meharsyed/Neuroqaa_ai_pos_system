@@ -58,6 +58,10 @@ export interface KhataCreditSale {
   sale_number: string;
   created_at: string;
   total_paise: number;
+  /** Settled at the till. Non-zero when the customer paid part of it up front. */
+  amount_paid_paise: number;
+  /** The part that actually went on the khata. */
+  credit_paise: number;
   item_count: number;
   status: string;
 }

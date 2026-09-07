@@ -23,7 +23,9 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
     exclude: ["**/node_modules/**", "**/e2e/**"],
-    passWithNoTests: true,
+    // Was true, which meant `npm run test` reported green with zero test files
+    // in the project for months — a CI signal that could only ever say yes.
+    passWithNoTests: false,
     coverage: {
       provider: "v8",
       reporter: ["text", "lcov"],

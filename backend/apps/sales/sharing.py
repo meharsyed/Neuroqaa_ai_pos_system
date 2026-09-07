@@ -52,8 +52,8 @@ def resolve_receipt_token(token: str):
 
     try:
         return (
-            Sale.objects.select_related("cashier", "payment", "customer")
-            .prefetch_related("items__product", "items__serials")
+            Sale.objects.select_related("cashier", "customer")
+            .prefetch_related("items__product", "items__serials", "payments")
             .get(pk=data["s"])
         )
     except (Sale.DoesNotExist, KeyError, TypeError):
@@ -111,7 +111,8 @@ def build_share_payload(sale, request=None) -> dict:
         base = public_base_url(request)
         url = f"{base}/r/{make_receipt_token(sale)}/" if base else ""
 
-    total = sale.total_paise / 100
+    # What the customer owes, which includes any installation charge.
+    total = sale.amount_due_paise / 100
     is_return = getattr(sale, "sale_type", "sale") == "return"
     heading = "Credit note" if is_return else "Bill"
 
@@ -122,10 +123,21 @@ def build_share_payload(sale, request=None) -> dict:
         f"Date: {sale.created_at:%d %b %Y}",
         f"Total: Rs {abs(total):,.2f}",
     ]
+    if getattr(sale, "installation_paise", 0):
+        lines.append(f"(includes installation Rs {sale.installation_paise / 100:,.2f})")
 
+    # A part-paid bill says so, so the customer sees what is still owed on it
+    # as well as what they owe overall.
     try:
-        if sale.payment and sale.payment.method == "credit" and sale.customer:
-            lines.append(f"Outstanding balance: Rs {sale.customer.outstanding_paise / 100:,.2f}")
+        credit = sale.credit_paise
+        if credit > 0:
+            if sale.amount_paid_paise > 0:
+                lines.append(f"Paid now: Rs {sale.amount_paid_paise / 100:,.2f}")
+            lines.append(f"On khata: Rs {credit / 100:,.2f}")
+            if sale.customer:
+                lines.append(
+                    f"Outstanding balance: Rs {sale.customer.outstanding_paise / 100:,.2f}"
+                )
     except Exception:
         pass
 

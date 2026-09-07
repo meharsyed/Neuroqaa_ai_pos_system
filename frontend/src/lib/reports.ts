@@ -1,4 +1,5 @@
 import { apiClient } from "./axios";
+import { blobErrorMessage } from "./pdf";
 import { toast } from "./use-toast";
 import type { AuditReport, DailySummary, InventoryValuation } from "@/types/config";
 
@@ -79,12 +80,13 @@ export function openReceiptPdf(saleId: number, template: ReceiptTemplate = "ther
         });
       }
     })
-    .catch((err) => {
-      console.error("Receipt PDF error:", err);
-      const detail = err.response?.data?.detail || err.message;
+    .catch(async (err) => {
+      // responseType "blob" means the error body is a Blob, so reading
+      // err.response.data.detail gave undefined and the cashier saw
+      // "Request failed with status code 401".
       toast({
         title: "Could not open the receipt",
-        description: detail,
+        description: await blobErrorMessage(err),
         variant: "error",
       });
     });

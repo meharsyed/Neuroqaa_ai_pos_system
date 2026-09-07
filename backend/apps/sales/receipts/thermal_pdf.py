@@ -168,21 +168,49 @@ def _build_story(ctx: ReceiptContext, page_width: float):
         totals_data.append(["Bill Discount:", f"-{format_money(ctx.bill_discount_paise, include_symbol=False)}"])
 
     if ctx.tax_paise:
-        totals_data.append([f"Tax ({ctx.tax_pct:.0f}%):", format_money(ctx.tax_paise, include_symbol=False)])
+        # :g, not :.0f — a bill taxed at 21.5% printed "Tax (22%)" here while
+        # the A4 invoice for the same sale said 21.5%. Two documents, one sale,
+        # two different rates.
+        pct = f" ({ctx.tax_pct:g}%)" if ctx.tax_pct else ""
+        totals_data.append([f"Tax{pct}:", format_money(ctx.tax_paise, include_symbol=False)])
 
-    totals_data.append(["TOTAL:", f"Rs {format_money(ctx.total_paise, include_symbol=False)}"])
-
-    if (ctx.payment_method or "").lower() == "credit":
-        # Nothing tendered on a khata sale — state the amount owed instead.
-        totals_data.append(["Paid now:", "0.00"])
-        totals_data.append(["BALANCE DUE (Khata):", format_money(ctx.total_paise, include_symbol=False)])
+    # Installation pushes the emphasised line down to AMOUNT DUE; the goods
+    # total becomes an ordinary row above it.
+    if ctx.has_installation:
+        totals_data.append(["Goods total:", format_money(ctx.total_paise, include_symbol=False)])
+        inst_idx = len(totals_data)
+        totals_data.append([
+            "+ Installation / labour:",
+            format_money(ctx.installation_paise, include_symbol=False),
+        ])
     else:
-        if ctx.tendered_paise:
-            totals_data.append([f"Paid ({(ctx.payment_method or 'CASH').upper()}):", format_money(ctx.tendered_paise, include_symbol=False)])
-        if ctx.change_paise:
-            totals_data.append(["Change:", format_money(ctx.change_paise, include_symbol=False)])
+        inst_idx = None
 
-    total_idx = next(i for i, r in enumerate(totals_data) if r[0] == "TOTAL:")
+    _emph = "AMOUNT DUE:" if ctx.has_installation else "TOTAL:"
+    totals_data.append([_emph, f"Rs {format_money(ctx.amount_due_paise, include_symbol=False)}"])
+
+    # One line per tender, so a part-paid bill shows the cash taken AND the
+    # khata remainder rather than only one of them.
+    cash_tenders = ctx.cash_tenders
+    if cash_tenders:
+        for t in cash_tenders:
+            totals_data.append([
+                f"Paid ({t.label.upper()}):",
+                format_money(t.amount_paise, include_symbol=False),
+            ])
+        change = sum(t.change_paise for t in cash_tenders)
+        if change:
+            totals_data.append(["Change:", format_money(change, include_symbol=False)])
+    else:
+        totals_data.append(["Paid now:", "0.00"])
+
+    if ctx.credit_paise:
+        totals_data.append([
+            "BALANCE DUE (Khata):",
+            format_money(ctx.credit_paise, include_symbol=False),
+        ])
+
+    total_idx = next(i for i, r in enumerate(totals_data) if r[0] == _emph)
     totals_table = Table(totals_data, colWidths=[page_width * 0.46, page_width * 0.54])
     totals_table.setStyle(TableStyle([
         ("TOPPADDING", (0, 0), (-1, -1), 1.5), ("BOTTOMPADDING", (0, 0), (-1, -1), 1.5),
@@ -198,11 +226,29 @@ def _build_story(ctx: ReceiptContext, page_width: float):
     ] + ([
         ("FONTNAME", (0, len(totals_data) - 1), (-1, len(totals_data) - 1), "Helvetica-Bold"),
         ("LINEBELOW", (0, len(totals_data) - 1), (-1, len(totals_data) - 1), 0.8, colors.black),
-    ] if (ctx.payment_method or "").lower() == "credit" else [])))
+    ] if ctx.credit_paise else []) + ([
+        # Labour is a different kind of charge from a discount or a tax — it is
+        # money passing through to the technician — so it is set apart rather
+        # than dropped into the run of adjustment rows.
+        ("FONTNAME", (0, inst_idx), (-1, inst_idx), "Helvetica-Bold"),
+        ("LINEABOVE", (0, inst_idx), (-1, inst_idx), 0.4, colors.grey),
+    ] if inst_idx is not None else [])))
     story.append(totals_table)
     story.append(Spacer(1, 3 * mm_unit))
 
-    # 9. Return policy / payment method (small text)
+    # 9. Warranty conditions — English only. A thermal printer's character ROM
+    # has no Urdu, so the Urdu clause lives on the A4 invoice and the web bill.
+    # Printed only when the bill carries serial numbers: without a serial there
+    # is no warranty to void, and roll is not free.
+    if ctx.warranty_en and ctx.has_serials:
+        story.append(Paragraph(
+            f"<b>Warranty:</b> {ctx.warranty_en}",
+            ParagraphStyle("warr", fontSize=5.8, textColor=colors.black,
+                           alignment=TA_CENTER, leading=7)
+        ))
+        story.append(Spacer(1, 2 * mm_unit))
+
+    # 10. Return policy / payment method (small text)
     story.append(Paragraph(
         "Goods returnable within 7 days with this receipt.",
         ParagraphStyle("", fontSize=6, textColor=colors.grey, alignment=TA_CENTER, leading=7.5)

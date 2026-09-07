@@ -138,6 +138,21 @@ tbody tr:nth-child(even) td{{background:{teal_soft}}}
 .due{{color:{danger};font-weight:700}}
 
 .notes{{margin-top:18px;font-size:13px;color:{muted}}}
+/* Labour is not a deduction — it is money passing through to the technician,
+   so it is set apart from the run of discount and tax rows above it. */
+.totals .row.goods{{border-top:1px solid {rule};padding-top:7px;font-weight:600;color:{ink}}}
+.totals .row.install{{background:{teal_soft};margin:0 -8px;padding:6px 8px;
+  border-radius:6px;font-weight:600;color:{teal}}}
+.totals .row.install span:first-child{{color:{teal}}}
+.totals .row.install small{{display:block;font-weight:400;font-size:11px;
+  color:{muted};margin-top:1px}}
+.warranty{{margin-top:16px;border:1px solid {rule};border-radius:8px;
+  padding:10px 12px;background:{teal_soft};font-size:12px;color:{muted}}}
+.warranty p{{margin:6px 0 0}}
+/* The browser shapes and lays out Urdu itself — it only needs telling that
+   the run is right-to-left and giving a face that has the glyphs. */
+.warranty .w-ur{{direction:rtl;text-align:right;font-size:15px;line-height:2;
+  font-family:"Noto Naskh Arabic","Jameel Noori Nastaleeq","Segoe UI",serif}}
 .notes .label{{color:{teal}}}
 .foot{{display:flex;gap:16px;align-items:center;flex-wrap:wrap;margin-top:20px;
   padding-top:16px;border-top:1px solid {rule}}}
@@ -240,29 +255,76 @@ def render(ctx: ReceiptContext, format_name: str = "a4") -> str:
             f"<span>{format_money_simple(ctx.tax_paise)}</span></div>"
         )
 
+    # Installation is what the customer pays on top of the goods, so it goes
+    # above the emphasised line and the emphasised line becomes Amount due.
+    if ctx.has_installation:
+        total_rows.append(
+            f'<div class="row goods"><span>Goods total</span>'
+            f"<span>{format_money_simple(ctx.total_paise)}</span></div>"
+        )
+        _note = (
+            f'<small>{_esc(ctx.installation_note)}</small>'
+            if ctx.installation_note else ""
+        )
+        total_rows.append(
+            f'<div class="row install"><span>+ Installation / labour{_note}</span>'
+            f"<span>{format_money_simple(ctx.installation_paise)}</span></div>"
+        )
+
     grand = (
-        '<div class="grand"><span class="lbl">Total</span>'
-        f'<span class="amt">Rs {format_money_simple(ctx.total_paise)}</span></div>'
+        f'<div class="grand"><span class="lbl">'
+        f'{"Amount due" if ctx.has_installation else "Total"}</span>'
+        f'<span class="amt">Rs {format_money_simple(ctx.amount_due_paise)}</span></div>'
     )
 
+    # One line per tender. On a part-paid bill the customer sees what they
+    # already handed over and what is still on their khata.
     after = []
-    method = (ctx.payment_method or "cash").replace("_", " ").title()
-    if (ctx.payment_method or "").lower() == "credit":
-        after.append('<div class="row"><span>Paid now</span><span>0.00</span></div>')
-        after.append(
-            '<div class="row"><span class="due">Balance due (Khata)</span>'
-            f'<span class="due">{format_money_simple(ctx.total_paise)}</span></div>'
-        )
-    else:
-        after.append(
-            f'<div class="row"><span>Paid ({_esc(method)})</span>'
-            f"<span>{format_money_simple(ctx.tendered_paise)}</span></div>"
-        )
-        if ctx.change_paise:
+    cash_tenders = ctx.cash_tenders
+    if cash_tenders:
+        for t in cash_tenders:
+            after.append(
+                f'<div class="row"><span>Paid ({_esc(t.label)})</span>'
+                f"<span>{format_money_simple(t.amount_paise)}</span></div>"
+            )
+        change = sum(t.change_paise for t in cash_tenders)
+        if change:
             after.append(
                 f'<div class="row"><span>Change</span>'
-                f"<span>{format_money_simple(ctx.change_paise)}</span></div>"
+                f"<span>{format_money_simple(change)}</span></div>"
             )
+    else:
+        after.append('<div class="row"><span>Paid now</span><span>0.00</span></div>')
+
+    if ctx.credit_paise:
+        after.append(
+            '<div class="row"><span class="due">Balance due (Khata)</span>'
+            f'<span class="due">{format_money_simple(ctx.credit_paise)}</span></div>'
+        )
+
+    # The warranty clause. Urdu needs no special handling here — the browser
+    # joins the letters and lays the line out right-to-left by itself, which is
+    # why the web bill gets Urdu for free where the PDF needed a font and two
+    # shaping libraries.
+    _w_lang = (ctx.warranty_language or "en").lower()
+    _w_parts = []
+    if _w_lang in ("en", "both") and ctx.warranty_en:
+        _w_parts.append(f'<p class="w-en">{_esc(ctx.warranty_en)}</p>')
+    if _w_lang in ("ur", "both") and ctx.warranty_ur:
+        _w_parts.append(
+            f'<p class="w-ur" lang="ur" dir="rtl">{_esc(ctx.warranty_ur)}</p>'
+        )
+    warranty_html = (
+        f'<div class="warranty"><div class="label">Warranty terms</div>'
+        f'{"".join(_w_parts)}</div>'
+        if _w_parts else ""
+    )
+
+    # Names every tender, so a split bill does not claim to be one method.
+    method = (
+        " + ".join(t.label for t in ctx.tenders)
+        or (ctx.payment_method or "cash").replace("_", " ").title()
+    )
 
     qr = _qr_svg(f"{ctx.sale_number}|{ctx.total_paise}|{ctx.created_at_formatted}")
     customer = _esc(ctx.customer_name or "Walk-in Customer")
@@ -332,9 +394,11 @@ def render(ctx: ReceiptContext, format_name: str = "a4") -> str:
 
     <div class="notes">
       <div class="label">Amount in words</div>
-      {_esc(num_to_words_pkr(ctx.total_paise))}
+      {_esc(num_to_words_pkr(ctx.amount_due_paise))}
       {f'<p>{_esc(ctx.receipt_footer)}</p>' if ctx.receipt_footer else ""}
     </div>
+
+    {warranty_html}
 
     <div class="foot">
       <div class="qr">{qr}</div>

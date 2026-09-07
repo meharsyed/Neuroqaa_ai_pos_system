@@ -84,6 +84,10 @@ def render(ctx: ReceiptContext, pagesize: str = "a4") -> bytes:
         _notes_and_totals(ctx, W, d),
     ]
 
+    warranty = _warranty_block(ctx, W, d)
+    if warranty is not None:
+        story += [Spacer(1, 5 * mm), warranty]
+
     if d["show_qr"]:
         story += [Spacer(1, 7 * mm), _qr_block(ctx, W, d)]
 
@@ -163,7 +167,12 @@ def _bill_and_payment(ctx, W, d):
     if ctx.customer_phone:
         bill.append(Paragraph(ctx.customer_phone, mut))
 
-    method = (ctx.payment_method or "cash").replace("_", " ").title()
+    # On a split bill name every tender, so "PAYMENT: Cash" is never a
+    # half-truth about a bill that also went on khata.
+    if ctx.tenders:
+        method = " + ".join(t.label for t in ctx.tenders)
+    else:
+        method = (ctx.payment_method or "cash").replace("_", " ").title()
     pay = [Paragraph("PAYMENT", lbl), Spacer(1, 1 * mm),
            Paragraph(method, val),
            Paragraph("VOIDED" if ctx.status == "voided" else "Completed",
@@ -261,7 +270,7 @@ def _notes_and_totals(ctx, W, d):
         notes += [Paragraph("NOTES", lbl), Spacer(1, 1 * mm),
                   Paragraph(ctx.receipt_footer, body), Spacer(1, 3 * mm)]
     notes += [Paragraph("AMOUNT IN WORDS", lbl), Spacer(1, 1 * mm),
-              Paragraph(num_to_words_pkr(ctx.total_paise), body)]
+              Paragraph(num_to_words_pkr(ctx.amount_due_paise), body)]
 
     # ── totals: build rows, remember which index is TOTAL ──
     tl = _s("tl", fontSize=d["base"], textColor=THEME.NEUTRAL_600,
@@ -285,25 +294,64 @@ def _notes_and_totals(ctx, W, d):
         rows.append([Paragraph(f"Tax{pct}", tl),
                      Paragraph(format_money_simple(ctx.tax_paise), tv)])
 
-    total_idx = len(rows)
-    rows.append([Paragraph("TOTAL", gl),
-                 Paragraph("Rs " + format_money_simple(ctx.total_paise), gv)])
+    # With installation on the bill the customer pays goods + labour, so the
+    # emphasised bar belongs on AMOUNT DUE and the goods total drops back to a
+    # plain row above it. Without installation nothing changes.
+    goods_idx = inst_idx = None
+    if ctx.has_installation:
+        goods_idx = len(rows)
+        rows.append([Paragraph("Goods total", _s("gt", parent=tl,
+                                                 fontName="Helvetica-Bold",
+                                                 textColor=THEME.NEUTRAL_800)),
+                     Paragraph(format_money_simple(ctx.total_paise),
+                               _s("gtv", parent=tv, fontName="Helvetica-Bold"))])
 
-    method = (ctx.payment_method or "cash").replace("_", " ").title()
-    if (ctx.payment_method or "").lower() == "credit":
-        # Nothing was tendered — say so, and state the amount now owed.
-        due = _s("due", fontName="Helvetica-Bold", fontSize=d["base"],
-                 textColor=THEME.WARNING, leading=d["base"] + 3)
-        due_r = _s("dur", parent=due, alignment=TA_RIGHT)
-        rows.append([Paragraph("Paid now", tl), Paragraph("0.00", tv)])
-        rows.append([Paragraph("BALANCE DUE (Khata)", due),
-                     Paragraph(format_money_simple(ctx.total_paise), due_r)])
-    else:
-        rows.append([Paragraph(f"Paid ({method})", tl),
-                     Paragraph(format_money_simple(ctx.tendered_paise), tv)])
-        if ctx.change_paise:
+        # Labour is not a discount or a tax — it is money the customer pays
+        # that passes straight through to the technician. Dropped into the run
+        # of adjustment rows it read as just another deduction, so it gets its
+        # own tinted band, a "+" to say it is added on top, and the technician
+        # named underneath.
+        inst_lbl = _s("il", parent=tl, fontName="Helvetica-Bold",
+                      textColor=THEME.TEAL_600)
+        inst_cell = [Paragraph("+ Installation / labour", inst_lbl)]
+        if ctx.installation_note:
+            inst_cell.append(Paragraph(ctx.installation_note, _s(
+                "instn", fontSize=d["small"] - 0.5, textColor=THEME.NEUTRAL_500,
+                leading=d["small"] + 1)))
+        inst_idx = len(rows)
+        rows.append([inst_cell,
+                     Paragraph(format_money_simple(ctx.installation_paise),
+                               _s("iv", parent=tv, fontName="Helvetica-Bold",
+                                  textColor=THEME.TEAL_600))])
+
+    total_idx = len(rows)
+    rows.append([Paragraph("AMOUNT DUE" if ctx.has_installation else "TOTAL", gl),
+                 Paragraph("Rs " + format_money_simple(ctx.amount_due_paise), gv)])
+
+    # Settlement. A bill can be paid by several tenders — Rs 2,000 cash and
+    # the rest on khata — so every tender gets its own line and the khata
+    # remainder is called out as the balance due.
+    due = _s("due", fontName="Helvetica-Bold", fontSize=d["base"],
+             textColor=THEME.WARNING, leading=d["base"] + 3)
+    due_r = _s("dur", parent=due, alignment=TA_RIGHT)
+
+    cash_tenders = ctx.cash_tenders
+    if cash_tenders:
+        for t in cash_tenders:
+            rows.append([Paragraph(f"Paid ({t.label})", tl),
+                         Paragraph(format_money_simple(t.amount_paise), tv)])
+        change = sum(t.change_paise for t in cash_tenders)
+        if change:
             rows.append([Paragraph("Change", tl),
-                         Paragraph(format_money_simple(ctx.change_paise), tv)])
+                         Paragraph(format_money_simple(change), tv)])
+    else:
+        # Nothing was tendered — say so, rather than leaving the reader to
+        # infer it from a missing line.
+        rows.append([Paragraph("Paid now", tl), Paragraph("0.00", tv)])
+
+    if ctx.credit_paise:
+        rows.append([Paragraph("BALANCE DUE (Khata)", due),
+                     Paragraph(format_money_simple(ctx.credit_paise), due_r)])
 
     tot_w = W * 0.42
     totals = Table(rows, colWidths=[tot_w * 0.52, tot_w * 0.48], hAlign="RIGHT")
@@ -316,7 +364,15 @@ def _notes_and_totals(ctx, W, d):
         ("BACKGROUND", (0, total_idx), (-1, total_idx), THEME.GREEN_800),
         ("TOPPADDING", (0, total_idx), (-1, total_idx), 5),
         ("BOTTOMPADDING", (0, total_idx), (-1, total_idx), 5),
-    ]))
+    ] + ([
+        # A rule above the goods total closes off the goods arithmetic, so the
+        # labour line below it clearly belongs to something else.
+        ("LINEABOVE", (0, goods_idx), (-1, goods_idx), 0.7, THEME.NEUTRAL_400),
+        ("TOPPADDING", (0, goods_idx), (-1, goods_idx), 4),
+        ("BACKGROUND", (0, inst_idx), (-1, inst_idx), THEME.TEAL_50),
+        ("TOPPADDING", (0, inst_idx), (-1, inst_idx), 4),
+        ("BOTTOMPADDING", (0, inst_idx), (-1, inst_idx), 4),
+    ] if inst_idx is not None else [])))
 
     layout = Table([[notes, totals]],
                    colWidths=[W - tot_w - 10 * mm, tot_w + 10 * mm], hAlign="LEFT")
@@ -326,6 +382,67 @@ def _notes_and_totals(ctx, W, d):
         ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
     return layout
+
+
+def _warranty_block(ctx, W, d):
+    """
+    The warranty conditions, in a bordered box below the totals.
+
+    Deliberately distinct from the "goods returnable within 7 days" footer:
+    that is a returns promise, this is what voids a warranty, and a customer
+    arguing about a burnt-out DVR needs to be able to point at one of them.
+
+    Urdu is drawn with the bundled Naskh face after reshaping and bidi
+    reordering. If any of that is unavailable the Urdu line is dropped rather
+    than printed as disconnected letters — see receipts/urdu.py.
+    """
+    from .urdu import URDU_FONT, urdu_lines
+
+    lang = (ctx.warranty_language or "en").lower()
+    ur_size = d["small"] + 1.5
+    lines = []
+
+    if lang in ("en", "both") and ctx.warranty_en:
+        lines.append(("en", ctx.warranty_en))
+    if lang in ("ur", "both") and ctx.warranty_ur:
+        # Wrapped here rather than by ReportLab: a bidi-reordered paragraph
+        # handed to a wrapper comes out with its lines in reverse order.
+        shaped = urdu_lines(ctx.warranty_ur, font_size=ur_size, max_width=W - 14)
+        if shaped:
+            lines.extend(("ur", line) for line in shaped)
+        elif not lines and ctx.warranty_en:
+            # Urdu was asked for and cannot be drawn — English beats nothing.
+            lines.append(("en", ctx.warranty_en))
+
+    if not lines:
+        return None
+
+    lbl = _s("wlbl", fontName="Helvetica-Bold", fontSize=d["small"] - 0.5,
+             textColor=THEME.TEAL_600, leading=d["small"] + 2)
+    body_en = _s("wen", fontSize=d["small"] - 0.5, textColor=THEME.NEUTRAL_600,
+                 leading=d["small"] + 2.5)
+    body_ur = _s("wur", fontName=URDU_FONT, fontSize=ur_size,
+                 textColor=THEME.NEUTRAL_600, leading=ur_size + 6,
+                 alignment=TA_RIGHT)
+
+    cell = [Paragraph("WARRANTY TERMS", lbl), Spacer(1, 1.2 * mm)]
+    prev_kind = None
+    for kind, text in lines:
+        if prev_kind is not None and kind != prev_kind:
+            cell.append(Spacer(1, 2 * mm))
+        cell.append(Paragraph(text, body_ur if kind == "ur" else body_en))
+        prev_kind = kind
+
+    box = Table([[cell]], colWidths=[W], hAlign="LEFT")
+    box.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.5, THEME.NEUTRAL_200),
+        ("BACKGROUND", (0, 0), (-1, -1), THEME.NEUTRAL_50),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    return box
 
 
 def _qr_block(ctx, W, d):

@@ -69,7 +69,7 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-dot-grid opacity-100 pointer-events-none" />
 
         {/* Animated blobs */}
-        <div className="absolute top-16 -right-20 w-96 h-96 rounded-full bg-blue-600/25 blur-3xl animate-float pointer-events-none" />
+        <div className="absolute top-16 -right-20 w-96 h-96 rounded-full bg-teal-600/25 blur-3xl animate-float pointer-events-none" />
         <div className="absolute bottom-24 -left-16 w-80 h-80 rounded-full bg-green-600/25 blur-3xl animate-float-slow pointer-events-none" />
         <div className="absolute top-1/2 right-1/3 w-52 h-52 rounded-full bg-teal-500/15 blur-2xl animate-float-reverse pointer-events-none" />
 
@@ -105,7 +105,7 @@ export default function LoginPage() {
           <ul className="space-y-3 animate-fade-up-delay-2">
             {FEATURES.map((f, i) => (
               <li key={i} className="flex items-start gap-2.5 text-sm text-white/75">
-                <CheckCircle2 className="h-4 w-4 text-blue-300 shrink-0 mt-0.5" />
+                <CheckCircle2 className="h-4 w-4 text-teal-300 shrink-0 mt-0.5" />
                 {f}
               </li>
             ))}

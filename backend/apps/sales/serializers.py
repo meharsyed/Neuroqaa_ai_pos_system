@@ -1,5 +1,6 @@
 from decimal import Decimal
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.catalog.models import Product
@@ -16,7 +17,7 @@ class SaleItemSerialSerializer(serializers.ModelSerializer):
 class PaymentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Payment
-        fields = ["method", "amount_tendered_paise", "change_paise"]
+        fields = ["id", "method", "amount_paise", "amount_tendered_paise", "change_paise"]
 
 
 class SaleItemSerializer(serializers.ModelSerializer):
@@ -43,7 +44,13 @@ class SaleItemSerializer(serializers.ModelSerializer):
 
 class SaleSerializer(serializers.ModelSerializer):
     items = SaleItemSerializer(many=True, read_only=True)
-    payment = PaymentSerializer(read_only=True)
+    payments = PaymentSerializer(many=True, read_only=True)
+    # A bill can be settled by several tenders now. `payment` is kept as the
+    # primary one — the largest non-credit tender — so every screen that showed
+    # a single method still works; `payments` is the full truth.
+    payment = serializers.SerializerMethodField()
+    credit_paise = serializers.SerializerMethodField()
+    amount_due_paise = serializers.SerializerMethodField()
     cashier_name = serializers.SerializerMethodField()
     customer_name = serializers.SerializerMethodField()
     customer_phone = serializers.SerializerMethodField()
@@ -64,14 +71,33 @@ class SaleSerializer(serializers.ModelSerializer):
             "subtotal_paise",
             "discount_paise",
             "tax_paise",
+            "tax_pct",
             "total_paise",
+            "installation_paise",
+            "installation_note",
+            "amount_due_paise",
             "notes",
             "items",
             "payment",
+            "payments",
+            "amount_paid_paise",
+            "credit_paise",
             "voided_by",
             "voided_at",
             "created_at",
         ]
+
+    @extend_schema_field(PaymentSerializer(allow_null=True))
+    def get_payment(self, obj):
+        primary = obj.primary_payment
+        return PaymentSerializer(primary).data if primary else None
+
+    def get_credit_paise(self, obj) -> int:
+        return obj.credit_paise
+
+    def get_amount_due_paise(self, obj) -> int:
+        """Goods plus installation — what the customer actually pays."""
+        return obj.amount_due_paise
 
     def get_cashier_name(self, obj) -> str:
         return obj.cashier.get_full_name() or obj.cashier.email
@@ -104,14 +130,48 @@ class SaleItemInputSerializer(serializers.Serializer):
         return value
 
 
+class TenderInputSerializer(serializers.Serializer):
+    """One way the cashier settled part of the bill."""
+
+    method = serializers.ChoiceField(choices=Payment.Method.choices)
+    amount_paise = serializers.IntegerField(min_value=1)
+    # Only meaningful for cash: what the customer actually handed over, so
+    # change can be worked out. Defaults to the amount for everything else.
+    amount_tendered_paise = serializers.IntegerField(min_value=0, required=False)
+
+    def validate_method(self, value):
+        if value == Payment.Method.CREDIT:
+            raise serializers.ValidationError(
+                "Khata is not a tender — whatever is left unpaid goes on khata "
+                "automatically."
+            )
+        return value
+
+
 class CreateSaleSerializer(serializers.Serializer):
     items = SaleItemInputSerializer(many=True)
     payment_method = serializers.ChoiceField(choices=Payment.Method.choices, default="cash")
-    amount_tendered_paise = serializers.IntegerField(min_value=0)
+    amount_tendered_paise = serializers.IntegerField(min_value=0, required=False, default=0)
+    # When present this replaces payment_method/amount_tendered_paise entirely:
+    # the bill is settled by these tenders and any shortfall goes on khata.
+    tenders = TenderInputSerializer(many=True, required=False)
     discount_paise = serializers.IntegerField(min_value=0, default=0)
     notes = serializers.CharField(max_length=500, allow_blank=True, default="")
 
-    tax_paise  = serializers.IntegerField(min_value=0, default=0)
+    # Give a rate and the server computes the amount; give an amount and it is
+    # taken as a flat figure. Give neither and the shop's default rate applies.
+    tax_pct = serializers.DecimalField(
+        max_digits=5, decimal_places=2,
+        min_value=Decimal("0"), max_value=Decimal("100"),
+        required=False, allow_null=True,
+    )
+    tax_paise = serializers.IntegerField(min_value=0, required=False, allow_null=True)
+    # Labour charged on this bill and paid on to the technician. Part of what
+    # the customer owes, never part of the shop's revenue.
+    installation_paise = serializers.IntegerField(min_value=0, default=0)
+    installation_note = serializers.CharField(
+        max_length=200, allow_blank=True, default="", required=False
+    )
     customer_id = serializers.IntegerField(min_value=1, required=False, allow_null=True)
 
     def validate_items(self, value):
@@ -121,10 +181,17 @@ class CreateSaleSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         # A credit sale with no customer completes, deducts stock and books
-        # revenue while billing nobody. Refuse it.
-        if attrs.get("payment_method") == "credit" and not attrs.get("customer_id"):
+        # revenue while billing nobody. Refuse it. With explicit tenders the
+        # shortfall is only known once the cart is priced, so create_sale
+        # raises there instead; this catches the unambiguous legacy case.
+        tenders = attrs.get("tenders")
+        if not tenders and attrs.get("payment_method") == "credit" and not attrs.get("customer_id"):
             raise serializers.ValidationError(
                 {"customer_id": "A credit (khata) sale requires a customer."}
+            )
+        if tenders is not None and len(tenders) == 0:
+            raise serializers.ValidationError(
+                {"tenders": "Give at least one tender, or leave this out entirely."}
             )
         return attrs
 

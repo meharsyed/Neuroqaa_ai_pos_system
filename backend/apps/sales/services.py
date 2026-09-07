@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
@@ -27,6 +27,15 @@ def _credit_reversed_for(sale: Sale) -> int:
     return -total
 
 
+def _credit_charged_for(sale: Sale, kinds: list[str]) -> int:
+    """How much of the given kinds this sale put on the khata."""
+    from apps.customers.models import CreditLedgerEntry
+
+    return CreditLedgerEntry.objects.filter(sale=sale, kind__in=kinds).aggregate(
+        t=Coalesce(Sum("delta_paise"), 0)
+    )["t"]
+
+
 def _generate_sale_number(sale: Sale) -> str:
     """
     Readable, sortable sale number: SALE-YYYYMMDD-NNNNN
@@ -35,6 +44,52 @@ def _generate_sale_number(sale: Sale) -> str:
     """
     today = timezone.localdate()
     return f"SALE-{today:%Y%m%d}-{sale.pk:05d}"
+
+
+def installation_summary(completed) -> dict:
+    """
+    Installation money across a queryset of sales — what the shop is holding on
+    behalf of technicians, and what customers still owe for labour.
+
+    This is not revenue and never appears in the P&L. It is a pass-through the
+    owner collects and hands on, so what he needs is simply: how much has come
+    in, and how much is still out.
+    """
+    from django.db.models import Sum
+    from django.db.models.functions import Coalesce
+
+    rows = completed.filter(installation_paise__gt=0)
+    charged = rows.aggregate(t=Coalesce(Sum("installation_paise"), 0))["t"]
+
+    # Money at the till settles installation first, so what has been collected
+    # is min(installation, paid) per bill — summed here in Python because the
+    # per-row minimum is not worth a database expression for these volumes.
+    collected = sum(r.installation_collected_paise for r in rows)
+
+    return {
+        "bill_count": rows.count(),
+        "charged_paise": charged,
+        "collected_paise": collected,
+        "outstanding_paise": charged - collected,
+    }
+
+
+def _cash_taken_paise(completed) -> int:
+    """
+    Cash that actually went into the drawer across a queryset of sales.
+
+    A bill can be settled by more than one tender now, so this sums the cash
+    *tenders* rather than the totals of sales whose method happened to be cash.
+    `amount_paise` is what the tender settled — change already handed back is
+    the difference between it and `amount_tendered_paise` — so this is the net
+    cash in the till.
+    """
+    from django.db.models import Sum
+    from django.db.models.functions import Coalesce
+
+    return Payment.objects.filter(
+        sale__in=completed, method=Payment.Method.CASH
+    ).aggregate(total=Coalesce(Sum("amount_paise"), 0))["total"]
 
 
 def get_shift_reconciliation(*, shift) -> dict:
@@ -50,9 +105,7 @@ def get_shift_reconciliation(*, shift) -> dict:
         total_revenue=Coalesce(Sum("total_paise"), 0),
         total_count=Count("id"),
     )
-    cash_sales_total = completed.filter(payment__method="cash").aggregate(
-        total=Coalesce(Sum("total_paise"), 0)
-    )["total"]
+    cash_sales_total = _cash_taken_paise(completed)
 
     return {
         "opening_float_paise": shift.opening_float_paise,
@@ -63,16 +116,146 @@ def get_shift_reconciliation(*, shift) -> dict:
     }
 
 
+def _resolve_tenders(
+    *,
+    tenders: list[dict] | None,
+    payment_method: str,
+    amount_tendered_paise: int,
+    total_paise: int,
+) -> list[dict]:
+    """
+    Normalise however the caller described payment into a list of tenders.
+
+    Callers may pass a single `payment_method` (the original API, still used
+    everywhere) or an explicit `tenders` list for a split payment. Either way
+    the result describes only the NON-credit part of the bill — whatever is
+    left unsettled becomes the khata remainder.
+
+    Returns [{method, amount_paise, tendered_paise, change_paise}].
+    """
+    if tenders is None:
+        if payment_method == Payment.Method.CREDIT:
+            return []                       # the whole bill goes on khata
+        return [{
+            "method": payment_method,
+            "amount_paise": total_paise,
+            "tendered_paise": amount_tendered_paise,
+            "change_paise": max(0, amount_tendered_paise - total_paise),
+        }]
+
+    resolved: list[dict] = []
+    for raw in tenders:
+        method = raw.get("method")
+        if method == Payment.Method.CREDIT:
+            raise ValueError(
+                "Credit is not a tender — it is whatever the tenders leave unpaid."
+            )
+        if method not in Payment.Method.values:
+            raise ValueError(f"Unknown payment method: {method!r}")
+
+        amount = int(raw.get("amount_paise") or 0)
+        if amount <= 0:
+            raise ValueError(f"Each payment must be more than zero ({method}).")
+
+        # The API calls it amount_tendered_paise; internal callers use the
+        # shorter name. Accept either, and fall back to the amount itself.
+        tendered = int(
+            raw.get("tendered_paise")
+            or raw.get("amount_tendered_paise")
+            or amount
+        )
+        if tendered < amount:
+            raise ValueError(
+                f"Tendered amount is less than the {method} payment it settles."
+            )
+        resolved.append({
+            "method": method,
+            "amount_paise": amount,
+            "tendered_paise": tendered,
+            # Only cash gives change back; a card is charged for exactly its amount.
+            "change_paise": (tendered - amount) if method == Payment.Method.CASH else 0,
+        })
+
+    settled = sum(t["amount_paise"] for t in resolved)
+    if settled > total_paise:
+        raise ValueError(
+            f"Payments total Rs {settled / 100:,.2f}, more than the bill of "
+            f"Rs {total_paise / 100:,.2f}."
+        )
+    return resolved
+
+
+def _resolve_tax(
+    *,
+    taxable_paise: int,
+    tax_pct: Decimal | float | str | None,
+    tax_paise: int | None,
+) -> tuple[int, Decimal | None]:
+    """
+    Work out the tax on a bill, and the rate behind it.
+
+    Three ways in, in order of preference:
+
+      tax_pct given      -> compute the amount from the rate. The normal path.
+      tax_paise given    -> a flat figure the till typed in; no rate to print.
+      neither            -> fall back to the shop's tax_pct setting.
+
+    Returns (amount, rate-or-None). The rate is stored on the sale so a receipt
+    prints the percentage that was actually charged rather than whatever the
+    setting happens to say when the bill is reprinted years later.
+    """
+    if tax_pct is not None and str(tax_pct) != "":
+        rate = Decimal(str(tax_pct))
+        if rate < 0 or rate > 100:
+            raise ValueError("A tax rate must be between 0 and 100 percent.")
+        # ROUND_HALF_UP to match the JavaScript Math.round the till uses to
+        # show the figure — otherwise a bill ending on a half paisa would be
+        # quoted to the customer as one number and recorded as another.
+        return int(
+            (Decimal(taxable_paise) * rate / 100).quantize(
+                Decimal("1"), rounding=ROUND_HALF_UP
+            )
+        ), rate
+
+    if tax_paise is not None:
+        if tax_paise < 0:
+            raise ValueError("Tax cannot be negative.")
+        if tax_paise > max(0, taxable_paise):
+            raise ValueError(
+                f"Tax of Rs {tax_paise / 100:,.2f} is more than the bill it is "
+                f"charged on (Rs {max(0, taxable_paise) / 100:,.2f})."
+            )
+        return tax_paise, None
+
+    from apps.config.utils import get_setting
+
+    try:
+        rate = Decimal(get_setting("tax_pct", "0") or "0")
+    except Exception:
+        rate = Decimal("0")
+    if rate <= 0:
+        return 0, None
+    return int(
+        (Decimal(taxable_paise) * rate / 100).quantize(
+            Decimal("1"), rounding=ROUND_HALF_UP
+        )
+    ), rate
+
+
 def create_sale(
     *,
     cashier,
     items: list[dict],
     payment_method: str = "cash",
-    amount_tendered_paise: int,
+    amount_tendered_paise: int = 0,
     discount_paise: int = 0,
-    tax_paise: int = 0,
+    tax_paise: int | None = None,
+    tax_pct: Decimal | float | str | None = None,
+    installation_paise: int = 0,
+    installation_note: str = "",
     notes: str = "",
     customer_id: int | None = None,
+    tenders: list[dict] | None = None,
 ) -> Sale:
     """
     Atomically create a completed sale. All steps are inside one transaction —
@@ -131,8 +314,28 @@ def create_sale(
             line_total = int(qty * item["unit_price_paise"]) - item.get("discount_paise", 0)
             subtotal_paise += line_total
 
+        if installation_paise < 0:
+            raise ValueError("An installation charge cannot be negative.")
+
+        # Tax is worked out here, from a rate, against the taxable amount. It
+        # used to be whatever number the browser sent, stored without a glance
+        # — so tax was already editable by anyone who could craft a request,
+        # and the interface was the only thing pretending otherwise.
+        taxable_paise = subtotal_paise - discount_paise
+        tax_paise, tax_rate = _resolve_tax(
+            taxable_paise=taxable_paise,
+            tax_pct=tax_pct,
+            tax_paise=tax_paise,
+        )
+
+        # total_paise stays the GOODS total — it is the revenue figure every
+        # report sums, so installation must never be folded into it. What the
+        # customer pays is amount_due_paise, and that is what the tenders and
+        # the khata work against. Installation is added after tax: labour is
+        # not taxed as goods.
         total_paise = subtotal_paise - discount_paise + tax_paise
-        change_paise = max(0, amount_tendered_paise - total_paise)
+        amount_due_paise = total_paise + installation_paise
+        change_paise = max(0, amount_tendered_paise - amount_due_paise)
 
         # Auto-link this sale to the cashier's current open shift (if any).
         # Shift must be queried INSIDE the atomic block so the lock is held consistently.
@@ -151,7 +354,10 @@ def create_sale(
             subtotal_paise=subtotal_paise,
             discount_paise=discount_paise,
             tax_paise=tax_paise,
+            tax_pct=tax_rate,
             total_paise=total_paise,
+            installation_paise=installation_paise,
+            installation_note=installation_note,
             notes=notes,
         )
 
@@ -193,38 +399,74 @@ def create_sale(
                 created_by=cashier,
             )
 
-        # Handle payment: credit vs cash/card/etc
-        if payment_method == "credit":
-            # For credit sales, update customer's outstanding balance instead of creating a Payment
-            if sale.customer:
-                # enforce_limit refuses the sale rather than letting the debt
-                # grow unbounded. Checked under the customer row lock.
+        # ── Settle the bill ────────────────────────────────────────────────
+        # One or more tenders; anything they leave unpaid goes on the khata.
+        resolved = _resolve_tenders(
+            tenders=tenders,
+            payment_method=payment_method,
+            amount_tendered_paise=amount_tendered_paise,
+            total_paise=amount_due_paise,
+        )
+        paid_paise = sum(t["amount_paise"] for t in resolved)
+        credit_paise = amount_due_paise - paid_paise
+
+        if credit_paise > 0:
+            if not sale.customer:
+                raise ValueError(
+                    "The unpaid balance would go on khata, which requires a customer."
+                )
+            # Money taken at the till settles the installation first, so the
+            # technician can be paid without waiting for the customer to clear
+            # the goods too. Whatever is left of each part goes on the khata as
+            # its own entry, so goods debt and labour debt stay tellable apart.
+            unpaid_installation = max(0, installation_paise - paid_paise)
+            unpaid_goods = credit_paise - unpaid_installation
+
+            # enforce_limit refuses the sale rather than letting the debt grow
+            # unbounded. Checked under the customer row lock. Only the part that
+            # actually goes on credit counts against the limit — and both parts
+            # do, because the customer owes both.
+            if unpaid_goods > 0:
                 post_credit_entry(
                     customer=sale.customer,
                     kind="sale",
-                    delta_paise=total_paise,
+                    delta_paise=unpaid_goods,
                     sale=sale,
                     note=f"Credit sale {sale.sale_number}",
                     created_by=cashier,
                     enforce_limit=True,
                 )
-            # Link the Payment to the sale. With sale=None the receipt printed
-            # "cash", every payment__method="credit" filter matched nothing, and
-            # the aging report was dead. Nothing is tendered on a credit sale.
+            if unpaid_installation > 0:
+                post_credit_entry(
+                    customer=sale.customer,
+                    kind="installation",
+                    delta_paise=unpaid_installation,
+                    sale=sale,
+                    note=(
+                        f"Installation on {sale.sale_number}"
+                        + (f" — {installation_note}" if installation_note else "")
+                    ),
+                    created_by=cashier,
+                    enforce_limit=True,
+                )
+            resolved.append({
+                "method": Payment.Method.CREDIT,
+                "amount_paise": credit_paise,
+                "tendered_paise": 0,
+                "change_paise": 0,
+            })
+
+        for tender in resolved:
             Payment.objects.create(
                 sale=sale,
-                method=payment_method,
-                amount_tendered_paise=0,
-                change_paise=0,
+                method=tender["method"],
+                amount_paise=tender["amount_paise"],
+                amount_tendered_paise=tender["tendered_paise"],
+                change_paise=tender["change_paise"],
             )
-        else:
-            # Create Payment record for cash/card/etc
-            Payment.objects.create(
-                sale=sale,
-                method=payment_method,
-                amount_tendered_paise=amount_tendered_paise,
-                change_paise=change_paise,
-            )
+
+        sale.amount_paid_paise = paid_paise
+        sale.save(update_fields=["amount_paid_paise", "updated_at"])
 
     log_activity(
         "sale_created",
@@ -232,8 +474,11 @@ def create_sale(
         details={
             "sale_number": sale.sale_number,
             "total_paise": total_paise,
+            "installation_paise": installation_paise,
             "items_count": len(items),
             "payment_method": payment_method,
+            "amount_paid_paise": sale.amount_paid_paise,
+            "credit_paise": sale.credit_paise,
         },
     )
     return sale
@@ -273,9 +518,7 @@ def close_shift(*, shift: Shift, closing_cash_paise: int, closing_notes: str = "
         total_revenue=Coalesce(Sum("total_paise"), 0),
         total_count=Count("id"),
     )
-    cash_sales_total = completed.filter(payment__method="cash").aggregate(
-        total=Coalesce(Sum("total_paise"), 0)
-    )["total"]
+    cash_sales_total = _cash_taken_paise(completed)
 
     expected_cash_paise = shift.opening_float_paise + cash_sales_total
     variance_paise = closing_cash_paise - expected_cash_paise
@@ -397,7 +640,16 @@ def create_return(
         # Returning goods bought on khata reduces what is owed, capped at what
         # is still outstanding against that sale.
         if original_sale.customer and _is_credit_sale(original_sale):
-            refundable = original_sale.total_paise - _credit_reversed_for(original_sale)
+            # Only the part that went on khata can be taken off it. On a split
+            # bill — Rs 2,000 cash, Rs 8,000 khata — a return knocks down the
+            # khata first, and never by more than the Rs 8,000 that was owed.
+            #
+            # Goods only: returning a camera does not undo the installation
+            # that was already carried out, so labour debt survives a return.
+            # A void is different — see void_sale.
+            refundable = _credit_charged_for(
+                original_sale, ["sale"]
+            ) - _credit_reversed_for(original_sale)
             reverse = min(return_subtotal, max(0, refundable))
             if reverse > 0:
                 post_credit_entry(
@@ -423,11 +675,8 @@ def create_return(
 
 
 def _is_credit_sale(sale: Sale) -> bool:
-    """True when the sale was put on the customer's khata."""
-    try:
-        return sale.payment.method == "credit"
-    except ObjectDoesNotExist:
-        return False
+    """True when any part of the sale was put on the customer's khata."""
+    return sale.payments.filter(method=Payment.Method.CREDIT).exists()
 
 
 def void_sale(*, sale: Sale, voided_by) -> Sale:
@@ -451,7 +700,11 @@ def void_sale(*, sale: Sale, voided_by) -> Sale:
         # Reverse the khata charge. Without this, voiding a credit sale left
         # the customer owing the full amount forever, with no sale to point at.
         if sale.customer and _is_credit_sale(sale):
-            already = sale.total_paise - _credit_reversed_for(sale)
+            # Only the khata portion was ever owed; the cash part of a split
+            # bill is refunded at the till, not written off the ledger. A void
+            # cancels the whole bill, so unlike a return it clears installation
+            # debt as well as goods debt.
+            already = sale.credit_paise - _credit_reversed_for(sale)
             if already > 0:
                 post_credit_entry(
                     customer=sale.customer,

@@ -12,6 +12,36 @@ from django.db.models import Count, Sum
 from django.db.models.functions import Coalesce
 
 
+def payment_method_breakdown(completed) -> dict:
+    """
+    Split takings by tender across a queryset of completed sales.
+
+    A bill can now be settled by several tenders — Rs 2,000 cash and the rest
+    on khata — so the money is summed from the Payment rows themselves rather
+    than attributing a whole sale total to one method. `count` is the number
+    of bills that used that tender, so the counts can overlap; only the money
+    adds up to the day's revenue.
+    """
+    from .models import Payment
+
+    rows = (
+        Payment.objects.filter(sale__in=completed)
+        .values("method")
+        .annotate(
+            total_paise=Coalesce(Sum("amount_paise"), 0),
+            count=Count("sale_id", distinct=True),
+        )
+        .order_by("method")
+    )
+    return {
+        (row["method"] or "credit"): {
+            "total_paise": row["total_paise"],
+            "count": row["count"],
+        }
+        for row in rows
+    }
+
+
 def daily_summary(report_date: date) -> dict:
     from .models import Sale, SaleItem
 
@@ -26,21 +56,14 @@ def daily_summary(report_date: date) -> dict:
         transaction_count=Count("id"),
     )
 
-    payment_rows = (
-        completed.values("payment__method")
-        .annotate(
-            total_paise=Coalesce(Sum("total_paise"), 0),
-            count=Count("id"),
-        )
-        .order_by("payment__method")
-    )
-    payment_breakdown = {
-        (row["payment__method"] or "credit"): {
-            "total_paise": row["total_paise"],
-            "count": row["count"],
-        }
-        for row in payment_rows
-    }
+    payment_breakdown = payment_method_breakdown(completed)
+
+    # Installation is money the shop collects for its technicians. It is not
+    # revenue and is deliberately absent from total_revenue above — reported
+    # here so the owner knows what he is holding and owes on.
+    from .services import installation_summary
+
+    installation = installation_summary(completed)
 
     top_products = list(
         SaleItem.objects.filter(sale__in=completed)
@@ -58,6 +81,7 @@ def daily_summary(report_date: date) -> dict:
         "total_revenue_paise": agg["total_revenue"],
         "total_discount_paise": agg["total_discount"],
         "payment_breakdown": payment_breakdown,
+        "installation": installation,
         "top_products": top_products,
     }
 
@@ -155,15 +179,13 @@ def audit_report(start: date, end: date, detailed: bool = False) -> dict:
     gross_margin_pct = round(gross_profit / revenue * 100, 1) if revenue > 0 else 0.0
 
     # Payment breakdown
-    payment_rows = (
-        completed.values("payment__method")
-        .annotate(count=Count("id"), total_paise=Coalesce(Sum("total_paise"), 0))
-        .order_by("payment__method")
-    )
-    payment_breakdown = {
-        (row["payment__method"] or "credit"): {"count": row["count"], "total_paise": row["total_paise"]}
-        for row in payment_rows
-    }
+    payment_breakdown = payment_method_breakdown(completed)
+
+    # Pass-through labour money. Kept out of revenue, gross profit and margin
+    # on purpose — the shop collects it and hands it to the technician.
+    from .services import installation_summary
+
+    installation = installation_summary(completed)
 
     # Daily breakdown
     daily_rows = list(
@@ -189,13 +211,13 @@ def audit_report(start: date, end: date, detailed: bool = False) -> dict:
         for row, entry in zip(daily_rows, daily_breakdown):
             day_sales = (
                 completed.filter(created_at__date=row["created_at__date"])
-                .select_related("cashier", "customer", "payment")
-                .prefetch_related("items__product")
+                .select_related("cashier", "customer")
+                .prefetch_related("items__product", "payments")
                 .order_by("created_at")
             )
             bills = []
             for sale in day_sales:
-                payment = getattr(sale, "payment", None)
+                payment = sale.primary_payment
                 bills.append(
                     {
                         "sale_number": sale.sale_number,
@@ -220,6 +242,12 @@ def audit_report(start: date, end: date, detailed: bool = False) -> dict:
                         "payment_method": payment.method if payment else None,
                         "amount_tendered_paise": payment.amount_tendered_paise if payment else None,
                         "change_paise": payment.change_paise if payment else None,
+                        "amount_paid_paise": sale.amount_paid_paise,
+                        "credit_paise": sale.credit_paise,
+                        "tenders": [
+                            {"method": t.method, "amount_paise": t.amount_paise}
+                            for t in sale.payments.all()
+                        ],
                     }
                 )
             entry["bills"] = bills
@@ -267,6 +295,7 @@ def audit_report(start: date, end: date, detailed: bool = False) -> dict:
         "gross_profit_paise": gross_profit,
         "gross_margin_pct": gross_margin_pct,
         "payment_breakdown": payment_breakdown,
+        "installation": installation,
         "daily_breakdown": daily_breakdown,
         "top_products": top_products,
     }

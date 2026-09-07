@@ -80,16 +80,16 @@ class TestCreditPaymentIsLinked:
             amount_tendered_paise=0, customer_id=customer.id,
         )
         sale.refresh_from_db()
-        assert sale.payment is not None, "credit Payment was created with sale=None again"
-        assert sale.payment.method == "credit"
+        assert sale.primary_payment is not None, "credit Payment was created with sale=None again"
+        assert sale.primary_payment.method == "credit"
 
     def test_nothing_is_tendered_on_a_credit_sale(self, cashier, product, customer):
         sale = create_sale(
             cashier=cashier, items=_items(product), payment_method="credit",
             amount_tendered_paise=0, customer_id=customer.id,
         )
-        assert sale.payment.amount_tendered_paise == 0
-        assert sale.payment.change_paise == 0
+        assert sale.primary_payment.amount_tendered_paise == 0
+        assert sale.primary_payment.change_paise == 0
 
     def test_no_orphan_payment_rows_are_created(self, cashier, product, customer):
         create_sale(

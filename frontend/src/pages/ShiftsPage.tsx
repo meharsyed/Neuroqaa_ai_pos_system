@@ -16,6 +16,7 @@ import { rupeesToPaise } from "@/lib/catalog";
 import { shiftsApi } from "@/lib/shifts";
 import { useToast } from "@/lib/use-toast";
 import type { ShiftCloseResult, ShiftReconciliation } from "@/types/config";
+import { useTranslation } from "@/lib/useTranslation";
 
 function formatDt(iso: string) {
   return new Date(iso).toLocaleString("en-PK", {
@@ -28,11 +29,12 @@ function VarianceLine({ paise }: { paise: number }) {
   if (paise === 0)
     return <span className="font-bold text-teal-600">✓ Balanced — drawer matches perfectly</span>;
   if (paise > 0)
-    return <span className="font-bold text-blue-600">+<Money paise={paise} /> over (surplus)</span>;
-  return <span className="font-bold text-red-600"><Money paise={paise} /> short (deficit)</span>;
+    return <span className="font-bold text-info">+<Money paise={paise} /> over (surplus)</span>;
+  return <span className="font-bold text-destructive"><Money paise={paise} /> short (deficit)</span>;
 }
 
 export default function ShiftsPage() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const { toast } = useToast();
 
@@ -125,8 +127,8 @@ export default function ShiftsPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Shift Management"
-        subtitle="Open and close cash drawer shifts with full reconciliation"
+        title={t("shifts.title")}
+        subtitle={t("shifts.subtitle")}
       />
 
       <div className="max-w-3xl mx-auto w-full space-y-6">
@@ -148,7 +150,7 @@ export default function ShiftsPage() {
                 ["Actual Cash Counted", <Money paise={closeResult.summary.actual_cash_paise} />],
                 ["Total Transactions",  String(closeResult.summary.total_sales)],
                 ["Total Revenue",       <Money paise={closeResult.summary.total_revenue_paise} />],
-              ] as [string, any][]).map(([label, value]) => (
+              ] as [string, React.ReactNode][]).map(([label, value]) => (
                 <div key={label} className="flex justify-between">
                   <span className="text-muted-foreground">{label}</span>
                   <span className="font-mono font-medium">{value}</span>
@@ -285,15 +287,15 @@ export default function ShiftsPage() {
                               </>
                             ) : liveVariance > 0 ? (
                               <>
-                                <ArrowRight className="h-3 w-3 text-blue-500" />
-                                <span className="text-blue-600 font-medium">
+                                <ArrowRight className="h-3 w-3 text-info" />
+                                <span className="text-info font-medium">
                                   Over by <Money paise={liveVariance} />
                                 </span>
                               </>
                             ) : (
                               <>
-                                <AlertTriangle className="h-3 w-3 text-red-500" />
-                                <span className="text-red-600 font-medium">
+                                <AlertTriangle className="h-3 w-3 text-destructive" />
+                                <span className="text-destructive font-medium">
                                   Short by <Money paise={Math.abs(liveVariance)} />
                                 </span>
                               </>
@@ -390,7 +392,7 @@ export default function ShiftsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 border-b">
                   <tr>
-                    {["#", "Cashier", "Opened", "Closed", "Float", "Status"].map((h, i) => (
+                    {["#", t("shifts.colCashier"), t("shifts.colOpened"), t("shifts.colClosed"), t("shifts.colFloat"), t("common.status")].map((h, i) => (
                       <th
                         key={h}
                         className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground ${
@@ -427,7 +429,7 @@ export default function ShiftsPage() {
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 border-b">
                   <tr>
-                    {["#", "Cashier", "Opened", "Closed", "Float", "Status"].map((h, i) => (
+                    {["#", t("shifts.colCashier"), t("shifts.colOpened"), t("shifts.colClosed"), t("shifts.colFloat"), t("common.status")].map((h, i) => (
                       <th
                         key={h}
                         className={`px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground ${

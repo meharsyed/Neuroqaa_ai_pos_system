@@ -166,5 +166,6 @@ def check_credit_limit(customer: Customer, amount_paise: int) -> None:
             f"Credit limit exceeded for {name}. "
             f"Limit Rs {limit / 100:,.2f}, already owed Rs {customer.outstanding_paise / 100:,.2f}, "
             f"this sale Rs {amount_paise / 100:,.2f}. "
-            f"Take a part payment or raise the limit."
+            f"Collect at least Rs {(projected - limit) / 100:,.2f} now, "
+            f"or raise the limit."
         )

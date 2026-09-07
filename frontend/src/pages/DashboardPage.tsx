@@ -61,9 +61,9 @@ function StatCard({
     },
     orange: {
       border: "border-warning",
-      bg: "bg-gradient-to-br from-warning-bg to-orange-50",
+      bg: "bg-gradient-to-br from-warning-bg to-warning-bg",
       icon: "text-warning",
-      gradient: "from-warning to-orange-500",
+      gradient: "from-warning to-warning",
     },
     teal: {
       border: "border-teal-500",
@@ -185,7 +185,7 @@ export default function DashboardPage() {
             value={lowStockProducts.length}
             sub={
               lowStockProducts.length > 0
-                ? <Link to="/products" className="hover:underline text-orange-600">{t("dashboard.viewItems")}</Link>
+                ? <Link to="/products" className="hover:underline text-warning">{t("dashboard.viewItems")}</Link>
                 : t("dashboard.allLevelsOk")
             }
             accent="red"
@@ -346,7 +346,7 @@ export default function DashboardPage() {
                             {sale.status === "completed" ? (
                               <CheckCircle2 className="h-5 w-5 text-teal-600" />
                             ) : (
-                              <XCircle className="h-5 w-5 text-red-600" />
+                              <XCircle className="h-5 w-5 text-destructive" />
                             )}
                           </div>
                           <div className="min-w-0 flex-1">
@@ -369,7 +369,7 @@ export default function DashboardPage() {
                         <div className="text-right">
                           <Money paise={sale.total_paise} className="font-bold text-teal-700 text-sm" />
                           {sale.discount_paise > 0 && (
-                            <div className="text-xs text-orange-600">-<Money paise={sale.discount_paise} /></div>
+                            <div className="text-xs text-warning">-<Money paise={sale.discount_paise} /></div>
                           )}
                         </div>
                       </div>
@@ -422,7 +422,7 @@ export default function DashboardPage() {
               ) : (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-gray-300" />
+                    <span className="h-2 w-2 rounded-full bg-n-300" />
                     <span className="text-sm font-medium text-muted-foreground">{t("dashboard.noOpenShift")}</span>
                   </div>
                   <p className="text-xs text-muted-foreground">
@@ -442,14 +442,14 @@ export default function DashboardPage() {
         {/* Low stock alert */}
         {lowStockProducts.length > 0 && (
           <div className="border rounded-xl overflow-hidden shadow-sm low-stock-critical">
-            <div className="px-4 py-3 border-b bg-gradient-to-r from-red-100/50 to-orange-100/40 flex items-center justify-between">
+            <div className="px-4 py-3 border-b bg-gradient-to-r from-destructive-bg/50 to-warning-bg/40 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-red-600 animate-pulse" />
-                <h2 className="font-bold text-sm text-red-800">{t("dashboard.lowStockAlert")}</h2>
+                <AlertTriangle className="h-5 w-5 text-destructive animate-pulse" />
+                <h2 className="font-bold text-sm text-destructive">{t("dashboard.lowStockAlert")}</h2>
                 <Badge variant="danger">{lowStockProducts.length}</Badge>
               </div>
-              <Button variant="outline" size="sm" asChild className="border-red-300 hover:bg-red-50">
-                <Link to="/products" className="text-red-700 font-medium">{t("dashboard.manageStock")}</Link>
+              <Button variant="outline" size="sm" asChild className="border-destructive/40 hover:bg-destructive-bg">
+                <Link to="/products" className="text-destructive font-medium">{t("dashboard.manageStock")}</Link>
               </Button>
             </div>
             <div className="divide-y">
@@ -462,7 +462,7 @@ export default function DashboardPage() {
                 return (
                   <div
                     key={p.id}
-                    className={`px-4 py-3 text-sm hover:bg-red-50/40 transition-colors ${isCritical ? 'bg-red-50/20' : 'bg-orange-50/10'}`}
+                    className={`px-4 py-3 text-sm hover:bg-destructive-bg/40 transition-colors ${isCritical ? 'bg-destructive-bg/20' : 'bg-warning-bg/10'}`}
                   >
                     <div className="flex items-center justify-between mb-2">
                       <div className="min-w-0 flex-1">
@@ -491,7 +491,7 @@ export default function DashboardPage() {
                       <span className="text-muted-foreground">
                         {stockQty} {p.unit} / {minThreshold} {t("dashboard.min")}
                       </span>
-                      <span className={isCritical ? "text-red-600 font-bold" : "text-orange-600 font-bold"}>
+                      <span className={isCritical ? "text-destructive font-bold" : "text-warning font-bold"}>
                         {stockPercent.toFixed(0)}%
                       </span>
                     </div>
@@ -499,9 +499,9 @@ export default function DashboardPage() {
                 );
               })}
               {lowStockProducts.length > 6 && (
-                <div className="px-4 py-2 text-xs text-muted-foreground text-center bg-amber-50/30">
+                <div className="px-4 py-2 text-xs text-muted-foreground text-center bg-warning-bg/30">
                   +{lowStockProducts.length - 6} {t("dashboard.more")}{" "}
-                  <Link to="/products" className="text-red-600 hover:underline font-medium">{t("dashboard.viewAllLower")}</Link>
+                  <Link to="/products" className="text-destructive hover:underline font-medium">{t("dashboard.viewAllLower")}</Link>
                 </div>
               )}
             </div>

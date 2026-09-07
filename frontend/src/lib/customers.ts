@@ -1,5 +1,5 @@
 import { apiClient } from "./axios";
-import { toast } from "./use-toast";
+import { openApiPdf } from "./pdf";
 import type {
   Customer,
   KhataDetail,
@@ -64,26 +64,9 @@ export const customersApi = {
  * has to be fetched rather than linked to directly.
  */
 export function openKhataStatement(customerId: number) {
-  return apiClient
-    .get<Blob>(`/customers/${customerId}/khata/statement/`, { responseType: "blob" })
-    .then((r) => {
-      const url = URL.createObjectURL(r.data);
-      const win = window.open(url, "_blank");
-      if (!win) {
-        toast({
-          title: "Popup blocked",
-          description: "Allow popups for this site to view the statement.",
-          variant: "error",
-        });
-      }
-    })
-    .catch((err) => {
-      toast({
-        title: "Could not open the statement",
-        description: err?.response?.data?.detail ?? err.message,
-        variant: "error",
-      });
-    });
+  return openApiPdf(`/customers/${customerId}/khata/statement/`, {
+    failure: "Could not open the statement",
+  });
 }
 
 /**

@@ -26,14 +26,43 @@ export interface SaleItemInput {
   serials?: SerialInput[];
 }
 
+/** Anything but credit — khata is what the tenders leave unpaid, not a tender. */
+export type TenderMethod = Exclude<PaymentMethod, "credit">;
+
+/** One way the cashier settled part of a bill. */
+export interface TenderInput {
+  method: TenderMethod;
+  amount_paise: number;
+  /** Cash only: what the customer handed over, so change can be worked out. */
+  amount_tendered_paise?: number;
+}
+
 export interface CreateSalePayload {
   items: SaleItemInput[];
   payment_method: PaymentMethod;
   amount_tendered_paise: number;
   discount_paise?: number;
+  /**
+   * The rate for this bill. The server computes the amount from it and stamps
+   * the rate on the sale, so a reprinted receipt shows what was charged rather
+   * than today's shop setting. Send tax_paise only for a flat figure.
+   */
+  tax_pct?: number;
   tax_paise?: number;
+  /**
+   * Labour billed on this bill and passed on to the technician. Part of what
+   * the customer pays; never part of the shop's revenue, so the server keeps
+   * it out of total_paise.
+   */
+  installation_paise?: number;
+  installation_note?: string;
   notes?: string;
   customer_id?: number | null;
+  /**
+   * When present this replaces payment_method entirely: the bill is settled by
+   * these tenders and whatever is left over goes on the customer's khata.
+   */
+  tenders?: TenderInput[];
 }
 
 export interface SaleItemSerial {
@@ -56,7 +85,10 @@ export interface SaleItemRecord {
 }
 
 export interface PaymentRecord {
+  id?: number;
   method: PaymentMethod;
+  /** What this tender settled. Change is amount_tendered_paise − amount_paise. */
+  amount_paise: number;
   amount_tendered_paise: number;
   change_paise: number;
 }
@@ -75,10 +107,26 @@ export interface Sale {
   subtotal_paise: number;
   discount_paise: number;
   tax_paise: number;
+  /** The rate this bill was charged at. Null when tax was a flat amount. */
+  tax_pct: string | null;
+  /** Goods total: subtotal − discount + tax. This is the revenue figure. */
   total_paise: number;
+  installation_paise: number;
+  installation_note: string;
+  /** total_paise + installation_paise — what the customer actually pays. */
+  amount_due_paise: number;
   notes: string;
   items: SaleItemRecord[];
-  payment: PaymentRecord;
+  /**
+   * The primary tender — the largest non-credit one. Kept so screens that only
+   * ever showed one method keep working; `payments` is the full picture.
+   */
+  payment: PaymentRecord | null;
+  payments: PaymentRecord[];
+  /** Sum of every non-credit tender. */
+  amount_paid_paise: number;
+  /** total_paise − amount_paid_paise: what went on the khata. */
+  credit_paise: number;
   voided_by: number | null;
   voided_at: string | null;
   created_at: string;

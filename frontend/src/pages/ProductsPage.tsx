@@ -11,8 +11,11 @@ function fmtQty(qty: string, unit: string): string {
   // Strip trailing zeros up to 3 decimal places
   return parseFloat(n.toFixed(3)).toString();
 }
-import { useQuery } from "@tanstack/react-query";
-import { Search, Plus, Upload, PackageX, RefreshCw, Download, Package, Wallet } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  Search, Plus, Upload, PackageX, RefreshCw, Download, Package, Wallet,
+  Trash2, ArchiveRestore, Archive, AlertTriangle,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -23,9 +26,15 @@ import { ProductImage } from "@/components/ProductImage";
 import { ProductModal } from "@/components/catalog/ProductModal";
 import { StockInModal } from "@/components/catalog/StockInModal";
 import { catalogApi } from "@/lib/catalog";
+import { apiErrorMessage } from "@/lib/users";
+import { useToast } from "@/lib/use-toast";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 import { Money } from "@/components/ui/money";
 import { reportsApi, downloadCsv } from "@/lib/reports";
 import type { Product, ProductFilters } from "@/types/catalog";
+import { useTranslation } from "@/lib/useTranslation";
 
 type ProductsTab = "catalogue" | "inventory";
 
@@ -39,12 +48,104 @@ function SummaryCard({ label, value }: { label: string; value: ReactNode }) {
 }
 
 
+/**
+ * Ask before removing a product, and say which of the two things will happen.
+ *
+ * "Delete" and "archive" are very different outcomes and the user cannot know
+ * which they will get, so the dialog asks the server first and then uses the
+ * right word.
+ */
+function RemoveProductDialog({
+  product, onClose, onConfirm, busy,
+}: {
+  product: Product | null;
+  onClose: () => void;
+  onConfirm: (id: number) => void;
+  busy: boolean;
+}) {
+  const { data: check, isLoading } = useQuery({
+    queryKey: ["removal-check", product?.id],
+    queryFn: () => catalogApi.products.removalCheck(product!.id),
+    enabled: !!product,
+  });
+
+  const willDelete = check?.can_delete === true;
+
+  return (
+    <Dialog open={!!product} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>
+            {isLoading ? "Remove product" : willDelete ? "Delete this product?" : "Archive this product?"}
+          </DialogTitle>
+        </DialogHeader>
+
+        {product && (
+          <div className="space-y-4">
+            <p className="text-sm">
+              <span className="font-medium">{product.name}</span>
+              <span className="text-muted-foreground"> · {product.sku}</span>
+            </p>
+
+            {isLoading ? (
+              <Skeleton className="h-20 w-full" />
+            ) : willDelete ? (
+              <p className="flex items-start gap-2 rounded-lg border border-destructive/40 bg-destructive-bg px-3 py-2.5 text-sm text-destructive">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>
+                  This product has never been sold or stocked, so it will be deleted
+                  outright. That cannot be undone.
+                </span>
+              </p>
+            ) : (
+              <div className="space-y-2">
+                <p className="flex items-start gap-2 rounded-lg border bg-muted/40 px-3 py-2.5 text-sm">
+                  <Archive className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+                  <span>
+                    It will be <span className="font-medium">archived</span>, not deleted —
+                    it disappears from the till and from search, and stays on every bill
+                    it has ever appeared on. You can restore it at any time.
+                  </span>
+                </p>
+                {!!check?.reasons.length && (
+                  <p className="text-xs text-muted-foreground">
+                    It has history: {check.reasons.join(", ")}.
+                  </p>
+                )}
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button variant="outline" className="flex-1" onClick={onClose} disabled={busy}>
+                Cancel
+              </Button>
+              <Button
+                variant={willDelete ? "destructive" : "primary"}
+                className="flex-1"
+                disabled={busy || isLoading}
+                onClick={() => onConfirm(product.id)}
+              >
+                {willDelete ? "Delete permanently" : "Archive it"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function ProductsPage() {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const { toast } = useToast();
   const [tab, setTab] = useState<ProductsTab>("catalogue");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<number | "">("");
   const [lowStockOnly, setLowStockOnly] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
+  const [removingProduct, setRemoving] = useState<Product | null>(null);
   const [page, setPage] = useState(1);
   const [productModalOpen, setProductModalOpen] = useState(false);
   const [stockInModalOpen, setStockInModalOpen] = useState(false);
@@ -64,6 +165,7 @@ export default function ProductsPage() {
     ...(debouncedSearch && { search: debouncedSearch }),
     ...(categoryFilter && { category: categoryFilter }),
     ...(lowStockOnly && { low_stock: true }),
+    ...(showArchived && { include_inactive: true }),
     page,
   };
 
@@ -94,6 +196,34 @@ export default function ProductsPage() {
   const products = data?.results ?? [];
   const totalCount = data?.count ?? 0;
   const totalPages = Math.ceil(totalCount / 50);
+
+  // Removing a product: the server decides whether that means archiving it or
+  // deleting it, because only it knows whether the product has history. The
+  // dialog asks first so the button can say the right word.
+  const { mutate: removeProduct, isPending: removing } = useMutation({
+    mutationFn: (id: number) => catalogApi.products.remove(id),
+    onSuccess: (result) => {
+      toast({
+        title: result.archived ? "Product archived" : "Product deleted",
+        description: result.detail,
+      });
+      setRemoving(null);
+      qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["low-stock"] });
+    },
+    onError: (err) =>
+      toast({ title: apiErrorMessage(err, "Could not remove the product."), variant: "error" }),
+  });
+
+  const { mutate: restoreProduct } = useMutation({
+    mutationFn: (id: number) => catalogApi.products.restore(id),
+    onSuccess: (p) => {
+      toast({ title: `${p.name} is back in the catalogue` });
+      qc.invalidateQueries({ queryKey: ["products"] });
+    },
+    onError: (err) =>
+      toast({ title: apiErrorMessage(err, "Could not restore the product."), variant: "error" }),
+  });
 
   function openAddModal() {
     setSelectedProduct(null);
@@ -127,8 +257,14 @@ export default function ProductsPage() {
 
   return (
     <PageContainer>
+      <RemoveProductDialog
+        product={removingProduct}
+        busy={removing}
+        onClose={() => setRemoving(null)}
+        onConfirm={(id) => removeProduct(id)}
+      />
       <PageHeader
-        title="Products"
+        title={t("products.title")}
         subtitle={`${totalCount.toLocaleString()} items${lowStockProducts.length > 0 ? ` · ${lowStockProducts.length} low stock` : ""}`}
         actions={
           <div className="flex items-center gap-2">
@@ -137,11 +273,11 @@ export default function ProductsPage() {
                 <label className="cursor-pointer">
                   <input type="file" accept=".csv" className="hidden" onChange={handleImportCsv} />
                   <Button variant="outline" size="sm" asChild>
-                    <span><Upload className="h-4 w-4 mr-1" /> Import CSV</span>
+                    <span><Upload className="h-4 w-4 mr-1" /> {t("products.importCsv")}</span>
                   </Button>
                 </label>
                 <Button size="sm" onClick={openAddModal}>
-                  <Plus className="h-4 w-4 mr-1" /> New Product
+                  <Plus className="h-4 w-4 mr-1" /> {t("products.newProduct")}
                 </Button>
               </>
             ) : (
@@ -227,11 +363,11 @@ export default function ProductsPage() {
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50">
                     <tr>
-                      <th className="px-4 py-2 text-left font-medium">SKU</th>
-                      <th className="px-4 py-2 text-left font-medium">Product</th>
-                      <th className="px-4 py-2 text-right font-medium">Stock</th>
-                      <th className="px-4 py-2 text-right font-medium">Cost Value</th>
-                      <th className="px-4 py-2 text-right font-medium">Sell Value</th>
+                      <th className="px-4 py-2 text-left font-medium">{t("products.colSku")}</th>
+                      <th className="px-4 py-2 text-left font-medium">{t("common.product")}</th>
+                      <th className="px-4 py-2 text-right font-medium">{t("products.colStock")}</th>
+                      <th className="px-4 py-2 text-right font-medium">{t("products.colCostValue")}</th>
+                      <th className="px-4 py-2 text-right font-medium">{t("products.colSellValue")}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
@@ -275,7 +411,7 @@ export default function ProductsPage() {
         <Select
           className="w-48"
           options={categories.map((c) => ({ value: c.id, label: c.name }))}
-          placeholder="All categories"
+          placeholder={t("products.allCategories")}
           value={categoryFilter}
           onChange={(e) => { setCategoryFilter(e.target.value ? Number(e.target.value) : ""); setPage(1); }}
         />
@@ -284,7 +420,17 @@ export default function ProductsPage() {
           size="sm"
           onClick={() => { setLowStockOnly((v) => !v); setPage(1); }}
         >
-          {lowStockOnly ? "⚠ Low Stock Only" : "All Stock"}
+          {lowStockOnly ? `⚠ ${t("products.lowStockOnly")}` : t("products.allStock")}
+        </Button>
+        {/* Archived products are hidden by default — that is the point of
+            archiving — but they have to be findable to be restored. */}
+        <Button
+          variant={showArchived ? "subtle" : "outline"}
+          size="sm"
+          onClick={() => { setShowArchived((v) => !v); setPage(1); }}
+        >
+          <Archive className="h-4 w-4" />
+          {showArchived ? t("products.showingArchived") : t("products.archived")}
         </Button>
         <Button variant="ghost" size="sm" onClick={() => refetch()}>
           <RefreshCw className="h-4 w-4" />
@@ -296,14 +442,14 @@ export default function ProductsPage() {
         <table className="w-full text-sm">
           <thead className="bg-muted/50">
             <tr>
-              <th className="px-4 py-3 text-left font-medium">SKU</th>
-              <th className="px-4 py-3 text-left font-medium">Name</th>
-              <th className="px-4 py-3 text-left font-medium">Category</th>
-              <th className="px-4 py-3 text-left font-medium">Unit</th>
-              <th className="px-4 py-3 text-right font-medium">Sell Price</th>
-              <th className="px-4 py-3 text-right font-medium">Stock</th>
-              <th className="px-4 py-3 text-center font-medium">Status</th>
-              <th className="px-4 py-3 text-right font-medium">Actions</th>
+              <th className="px-4 py-3 text-left font-medium">{t("products.colSku")}</th>
+              <th className="px-4 py-3 text-left font-medium">{t("products.colName")}</th>
+              <th className="px-4 py-3 text-left font-medium">{t("products.colCategory")}</th>
+              <th className="px-4 py-3 text-left font-medium">{t("products.colUnit")}</th>
+              <th className="px-4 py-3 text-right font-medium">{t("products.colSellPrice")}</th>
+              <th className="px-4 py-3 text-right font-medium">{t("products.colStock")}</th>
+              <th className="px-4 py-3 text-center font-medium">{t("common.status")}</th>
+              <th className="px-4 py-3 text-right font-medium">{t("common.actions")}</th>
             </tr>
           </thead>
           <tbody className="divide-y">
@@ -359,13 +505,14 @@ export default function ProductsPage() {
                     <span className="max-w-[150px] truncate" title={product.name}>
                       {product.name}
                     </span>
+                    {!product.is_active && <Badge variant="neutral">{t("products.archivedBadge")}</Badge>}
                   </div>
                 </td>
                 <td className="px-4 py-3 text-muted-foreground">{product.category_name ?? "—"}</td>
                 <td className="px-4 py-3 text-muted-foreground">{product.unit}</td>
                 <td className="px-4 py-3 text-right tabular-nums">{product.sell_price}</td>
                 <td className="px-4 py-3 text-right tabular-nums">
-                  <span className={parseFloat(product.stock_qty) === 0 ? "text-red-600 font-semibold" : product.is_low_stock ? "text-amber-600 font-semibold" : ""}>
+                  <span className={parseFloat(product.stock_qty) === 0 ? "text-destructive font-semibold" : product.is_low_stock ? "text-warning font-semibold" : ""}>
                     {fmtQty(product.stock_qty, product.unit)}
                   </span>
                 </td>
@@ -395,6 +542,26 @@ export default function ProductsPage() {
                     >
                       Edit
                     </Button>
+                    {product.is_active ? (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setRemoving(product)}
+                        title="Archive or delete"
+                        aria-label={`Remove ${product.name}`}
+                      >
+                        <Trash2 className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => restoreProduct(product.id)}
+                        title="Put this product back in the catalogue"
+                      >
+                        <ArchiveRestore className="h-4 w-4" /> {t("products.restore")}
+                      </Button>
+                    )}
                   </div>
                 </td>
               </tr>

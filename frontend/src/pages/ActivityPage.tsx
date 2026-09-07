@@ -38,7 +38,7 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 const ACTION_COLORS: Record<string, string> = {
-  login:            "bg-blue-100 text-blue-700",
+  login:            "bg-info-bg text-info",
   sale_created:     "bg-success-bg text-success",
   sale_voided:      "bg-destructive-bg text-destructive",
   return_created:   "bg-warning-bg text-warning",

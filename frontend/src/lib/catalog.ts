@@ -31,6 +31,27 @@ export const catalogApi = {
     update: (id: number, data: Partial<ProductFormValues>) =>
       apiClient.patch<Product>(`/products/${id}/`, data).then((r) => r.data),
 
+    /**
+     * Remove a product. The server archives it when it has been sold or
+     * stocked before — deleting the row would corrupt every bill it appears
+     * on — and deletes it outright only when it has no history at all.
+     */
+    remove: (id: number) =>
+      apiClient
+        .delete<{ archived: boolean; detail: string }>(`/products/${id}/`)
+        .then((r) => r.data),
+
+    restore: (id: number) =>
+      apiClient.post<Product>(`/products/${id}/restore/`).then((r) => r.data),
+
+    /** Ask which of the two will happen, so the button can say the right word. */
+    removalCheck: (id: number) =>
+      apiClient
+        .get<{ can_delete: boolean; reasons: string[]; is_active: boolean }>(
+          `/products/${id}/removal-check/`
+        )
+        .then((r) => r.data),
+
     lowStock: () =>
       apiClient.get<Product[]>("/products/low-stock/").then((r) => r.data),
 

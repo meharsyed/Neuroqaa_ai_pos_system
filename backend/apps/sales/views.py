@@ -1,5 +1,6 @@
 import logging
 from datetime import date
+from decimal import Decimal
 
 import django_filters
 from django.db import IntegrityError
@@ -13,6 +14,39 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 logger = logging.getLogger(__name__)
+
+
+def _log_tax_override(request, sale, data) -> None:
+    """Record a bill taxed at anything but the shop's own rate."""
+    from apps.accounts.activity import log_activity
+    from apps.config.utils import get_setting
+
+    if data.get("tax_pct") is None and data.get("tax_paise") is None:
+        return                                   # the default rate was used
+    try:
+        shop_rate = Decimal(get_setting("tax_pct", "0") or "0")
+    except Exception:
+        shop_rate = Decimal("0")
+    if sale.tax_pct is not None and Decimal(sale.tax_pct) == shop_rate:
+        return                                   # same as the default anyway
+
+    log_activity(
+        "tax_overridden",
+        user=request.user,
+        details={
+            "sale_number": sale.sale_number,
+            "shop_rate_pct": str(shop_rate),
+            "applied_pct": str(sale.tax_pct) if sale.tax_pct is not None else None,
+            "tax_paise": sale.tax_paise,
+        },
+        request=request,
+    )
+
+
+def _unit_price_for(sale, product_id: int) -> int:
+    """What this product was sold at on this bill, for valuing a return."""
+    item = next((i for i in sale.items.all() if i.product_id == product_id), None)
+    return item.unit_price_paise if item else 0
 
 from .models import Sale, Shift
 from .receipts import print_receipt_network, render_pdf_invoice, render_pdf_receipt, render_text_receipt
@@ -58,8 +92,8 @@ class SaleViewSet(
     viewsets.GenericViewSet,
 ):
     queryset = (
-        Sale.objects.select_related("cashier", "payment", "voided_by", "customer")
-        .prefetch_related("items__product", "items__serials")
+        Sale.objects.select_related("cashier", "voided_by", "customer")
+        .prefetch_related("items__product", "items__serials", "payments")
         .order_by("-created_at")
     )
     serializer_class = SaleSerializer
@@ -88,9 +122,13 @@ class SaleViewSet(
                 cashier=request.user,
                 items=[dict(i) for i in d["items"]],
                 payment_method=d["payment_method"],
-                amount_tendered_paise=d["amount_tendered_paise"],
+                amount_tendered_paise=d.get("amount_tendered_paise", 0),
+                tenders=[dict(t) for t in d["tenders"]] if d.get("tenders") else None,
                 discount_paise=d.get("discount_paise", 0),
-                tax_paise=d.get("tax_paise", 0),
+                tax_paise=d.get("tax_paise"),
+                tax_pct=d.get("tax_pct"),
+                installation_paise=d.get("installation_paise", 0),
+                installation_note=d.get("installation_note", ""),
                 notes=d.get("notes", ""),
                 customer_id=d.get("customer_id"),
             )
@@ -105,9 +143,13 @@ class SaleViewSet(
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # A bill taxed at something other than the shop rate is worth a record,
+        # since anyone at the till can now change it.
+        _log_tax_override(request, sale, d)
+
         sale_data = (
-            Sale.objects.select_related("cashier", "payment", "voided_by", "customer")
-            .prefetch_related("items__product")
+            Sale.objects.select_related("cashier", "voided_by", "customer")
+            .prefetch_related("items__product", "payments")
             .get(pk=sale.pk)
         )
         return Response(SaleSerializer(sale_data).data, status=status.HTTP_201_CREATED)
@@ -130,8 +172,8 @@ class SaleViewSet(
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
 
         sale_data = (
-            Sale.objects.select_related("cashier", "payment", "voided_by", "customer")
-            .prefetch_related("items__product")
+            Sale.objects.select_related("cashier", "voided_by", "customer")
+            .prefetch_related("items__product", "payments")
             .get(pk=sale.pk)
         )
         return Response(SaleSerializer(sale_data).data)
@@ -143,6 +185,34 @@ class SaleViewSet(
         serializer = CreateReturnSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         d = serializer.validated_data
+
+        # A return is a void with extra steps — it puts stock back and takes
+        # money off the bill — so it cannot be looser than voiding. Cashiers
+        # may handle everyday returns up to a ceiling the owner sets; anything
+        # larger needs a manager standing there.
+        if request.user.role not in ("owner", "manager"):
+            from apps.config.utils import get_setting
+
+            try:
+                ceiling = int(get_setting("cashier_return_limit_paise", "500000") or 0)
+            except ValueError:
+                ceiling = 500000
+            value = sum(
+                int(Decimal(str(i["qty"])) * _unit_price_for(original_sale, i["product_id"]))
+                for i in d["items"]
+            )
+            if ceiling <= 0 or value > ceiling:
+                return Response(
+                    {
+                        "detail": (
+                            f"This return is worth Rs {value / 100:,.2f}. A cashier may "
+                            f"return up to Rs {ceiling / 100:,.2f} — ask an owner or "
+                            f"manager to process this one."
+                        )
+                    },
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
         try:
             return_sale = create_return(
                 cashier=request.user,
@@ -155,8 +225,8 @@ class SaleViewSet(
 
         return_data = (
             Sale.objects
-            .select_related("cashier", "payment", "voided_by", "customer")
-            .prefetch_related("items__product")
+            .select_related("cashier", "voided_by", "customer")
+            .prefetch_related("items__product", "payments")
             .get(pk=return_sale.pk)
         )
         return Response(SaleSerializer(return_data).data, status=status.HTTP_201_CREATED)
@@ -165,8 +235,8 @@ class SaleViewSet(
     @action(detail=True, methods=["get"], url_path="receipt/text")
     def receipt_text(self, request, pk=None):
         sale = (
-            Sale.objects.select_related("cashier", "payment")
-            .prefetch_related("items__product", "items__serials")
+            Sale.objects.select_related("cashier")
+            .prefetch_related("items__product", "items__serials", "payments")
             .get(pk=pk)
         )
         text = render_text_receipt(sale)
@@ -180,8 +250,8 @@ class SaleViewSet(
     def receipt_pdf(self, request, pk=None):
         try:
             sale = (
-                Sale.objects.select_related("cashier", "payment", "customer")
-                .prefetch_related("items__product", "items__serials")
+                Sale.objects.select_related("cashier", "customer")
+                .prefetch_related("items__product", "items__serials", "payments")
                 .get(pk=pk)
             )
             template = request.query_params.get("template", "thermal")
@@ -209,8 +279,8 @@ class SaleViewSet(
         from .receipts import html as receipt_html_renderer
 
         sale = (
-            Sale.objects.select_related("cashier", "payment", "customer")
-            .prefetch_related("items__product", "items__serials")
+            Sale.objects.select_related("cashier", "customer")
+            .prefetch_related("items__product", "items__serials", "payments")
             .get(pk=pk)
         )
         fmt = request.query_params.get("format", "a4")
@@ -232,8 +302,8 @@ class SaleViewSet(
         from .sharing import build_share_payload
 
         sale = (
-            Sale.objects.select_related("cashier", "payment", "customer")
-            .prefetch_related("items__product")
+            Sale.objects.select_related("cashier", "customer")
+            .prefetch_related("items__product", "payments")
             .get(pk=pk)
         )
         return Response(build_share_payload(sale, request))
@@ -242,8 +312,8 @@ class SaleViewSet(
     @action(detail=True, methods=["post"], url_path="receipt/print")
     def receipt_print(self, request, pk=None):
         sale = (
-            Sale.objects.select_related("cashier", "payment")
-            .prefetch_related("items__product", "items__serials")
+            Sale.objects.select_related("cashier")
+            .prefetch_related("items__product", "items__serials", "payments")
             .get(pk=pk)
         )
         try:
@@ -417,10 +487,16 @@ def report_audit(request):
     return Response(data)
 
 
-@extend_schema(summary="Current inventory valuation")
+@extend_schema(summary="Current inventory valuation — owner/manager only")
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def report_inventory(request):
+    # Every cost price and the whole potential margin of the shop, in one call.
+    if request.user.role not in ("owner", "manager"):
+        return Response(
+            {"detail": "Only owner or manager can view inventory valuation."},
+            status=status.HTTP_403_FORBIDDEN,
+        )
     data = inventory_valuation()
 
     if request.query_params.get("export") == "csv":

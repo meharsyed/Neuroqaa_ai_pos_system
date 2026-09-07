@@ -7,11 +7,11 @@ export interface Column<T> {
   key: keyof T;
   label: string;
   align?: "left" | "right" | "center";
-  render?: (value: any, row: T) => React.ReactNode;
+  render?: (value: T[keyof T], row: T) => React.ReactNode;
   width?: string;
 }
 
-interface DataTableProps<T extends Record<string, any>> {
+interface DataTableProps<T extends Record<string, unknown>> {
   columns: Column<T>[];
   rows: T[];
   onRowClick?: (row: T) => void;
@@ -22,7 +22,7 @@ interface DataTableProps<T extends Record<string, any>> {
   className?: string;
 }
 
-export function DataTable<T extends Record<string, any>>({
+export function DataTable<T extends Record<string, unknown>>({
   columns,
   rows,
   onRowClick,
@@ -122,7 +122,12 @@ export function DataTable<T extends Record<string, any>>({
                       col.align === "center" && "text-center"
                     )}
                   >
-                    {col.render ? col.render(row[col.key], row) : row[col.key]}
+                    {/* A cell with no render function is printed as-is, so it
+                        has to be coerced — an arbitrary T[keyof T] is not a
+                        ReactNode. */}
+                    {col.render
+                      ? col.render(row[col.key], row)
+                      : (row[col.key] as React.ReactNode)}
                   </td>
                 ))}
               </tr>

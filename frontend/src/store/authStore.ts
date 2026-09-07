@@ -8,6 +8,8 @@ interface AuthState {
   refreshToken: string | null;
   isAuthenticated: boolean;
   setAuth: (response: LoginResponse) => void;
+  /** Patch the cached user — e.g. after they choose their own password. */
+  setUser: (user: User) => void;
   setAccessToken: (token: string) => void;
   logout: () => void;
 }
@@ -27,6 +29,8 @@ export const useAuthStore = create<AuthState>()(
           refreshToken: response.refresh,
           isAuthenticated: true,
         }),
+
+      setUser: (user: User) => set({ user }),
 
       // Called by the axios interceptor after a silent token refresh
       setAccessToken: (token: string) => set({ accessToken: token }),

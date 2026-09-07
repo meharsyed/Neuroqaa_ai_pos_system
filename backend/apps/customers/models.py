@@ -61,6 +61,10 @@ class CreditLedgerEntry(models.Model):
 
     class Kind(models.TextChoices):
         SALE = "sale", "Credit sale"
+        # Installation/labour billed on credit. Money the customer owes, but
+        # owed onward to a technician rather than earned by the shop — so it
+        # is kept apart from goods debt on the ledger.
+        INSTALLATION = "installation", "Installation charge on credit"
         PAYMENT = "payment", "Payment received"
         RETURN = "return", "Return"
         VOID = "void", "Sale voided"

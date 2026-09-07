@@ -32,6 +32,12 @@ class CustomerSerializer(serializers.ModelSerializer):
             "total_revenue_paise",
             "created_at",
         ]
+        # outstanding_paise is a cache of the append-only credit ledger. It was
+        # writable through this serializer, which meant a PATCH could zero a
+        # customer's khata and leave the ledger saying otherwise — the exact
+        # drift check_khata was written to detect. Only post_credit_entry may
+        # move it now.
+        read_only_fields = ["id", "outstanding_paise", "created_at"]
 
     # These three used to fire a query each, per customer, on a list endpoint
     # that had no pagination. The viewset now annotates them; the fallbacks

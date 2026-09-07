@@ -67,13 +67,17 @@
     --info:        180 77% 31%;  --info-bg:    180 44% 93%;
 
     /* ── Dark chrome surfaces (sidebar / topbar) ───── */
-    --chrome:               var(--green-900);
-    --chrome-elevated:      var(--green-800);
+    /* Pinned, not var(--green-900). The sidebar and topbar are meant to be
+       dark green in BOTH themes; pointing them at the brand ramp means the
+       day someone gives that ramp dark-mode values, the chrome inverts with
+       it and the sidebar turns pale. */
+    --chrome:               146 38% 12%;
+    --chrome-elevated:      146 38% 16%;
     --chrome-foreground:      0 0% 100%;
     --chrome-muted-foreground: 143 18% 72%;   /* 4.9:1 contrast on --chrome ✅ */
     --chrome-border:        146 30% 22%;
     --chrome-hover:         146 34% 19%;
-    --chrome-active:        var(--teal-600);
+    --chrome-active:        180 77% 31%;
 
     /* ── Shape & depth ─────────────────────────────── */
     --radius:    0.5rem;
@@ -105,6 +109,41 @@
     --border: 220 25% 20%;
     --input: 220 25% 20%;
     --ring: 178 76% 45%;
+
+    /* ── Status colours, in the dark ─────────────────────────────────
+       These were defined once, in light mode only. So every status panel
+       in the app — the credit-limit warning, the low-stock badge, the
+       drawer variance — kept its 94%-lightness background and rendered as
+       a near-white box floating in a dark interface, with dark text on it.
+
+       Swapping raw palette classes for these tokens did NOT fix that,
+       because the tokens themselves had the same problem. This is the fix:
+       the text lightens so it carries on a dark ground, and the -bg
+       becomes a dark tint of the same hue instead of a pale wash. */
+    --success:     147 55% 58%;  --success-bg: 147 32% 15%;
+    --warning:      33 85% 62%;  --warning-bg:  30 45% 15%;
+    --destructive:   4 80% 66%;  --destructive-bg: 5 40% 17%;
+    --info:        180 60% 55%;  --info-bg:    180 35% 15%;
+
+    /* The neutral ramp reads as "how light is this?" everywhere it is used,
+       so in dark mode it has to run the other way — otherwise bg-n-100
+       paints a white panel and text-n-700 writes near-black on it. */
+    --n-0:   220 30% 10%;
+    --n-50:  220 28% 12%;
+    --n-100: 220 25% 16%;
+    --n-200: 220 24% 21%;
+    --n-300: 218 20% 30%;
+    --n-400: 215 17% 45%;
+    --n-500: 215 20% 65%;
+    --n-600: 213 24% 76%;
+    --n-700: 211 30% 85%;
+    --n-800: 210 40% 93%;
+    --n-900: 210 45% 97%;
+
+    /* Brand ramps: the deep end is the light end now. The chrome surfaces
+       below already sit on dark green, so those stay as they are. */
+    --teal-50:  180 35% 15%;
+    --teal-100: 180 33% 20%;
   }
 }
 

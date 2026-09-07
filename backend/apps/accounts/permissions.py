@@ -33,3 +33,29 @@ class IsOwnerOrManagerOrReadOnly(BasePermission):
         if request.method in SAFE_METHODS:
             return True
         return getattr(user, "role", None) in ("owner", "manager")
+
+
+class IsOwner(BasePermission):
+    """
+    Owner only. Managing staff accounts and shop settings is the one thing a
+    manager must not do — otherwise a manager can promote himself to owner and
+    the role hierarchy means nothing.
+    """
+
+    message = "Only the owner can perform this action."
+
+    def has_permission(self, request, view):
+        user = request.user
+        return bool(
+            user and user.is_authenticated and getattr(user, "role", None) == "owner"
+        )
+
+
+def can_see_cost_prices(user) -> bool:
+    """
+    Cost and margin are the owner's business, not the counter's.
+
+    A cashier who knows the cost of every DVR knows exactly how much room
+    there is to discount one, which is the opening move in most till fraud.
+    """
+    return getattr(user, "role", None) in ("owner", "manager")

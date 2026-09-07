@@ -8,6 +8,13 @@ from .context import ReceiptContext
 from .utils import format_money, num_to_words_pkr
 
 
+def _wrap(text: str, width: int) -> list[str]:
+    """Break a clause onto roll-width lines without splitting words."""
+    import textwrap
+
+    return textwrap.wrap(text, width=max(16, width)) or [""]
+
+
 def _pad_center(text: str, width: int) -> str:
     """Center text within given width, truncating if needed"""
     text = str(text)[:width]
@@ -121,21 +128,46 @@ def render_thermal_text(ctx: ReceiptContext, width_mm: int = 80) -> str:
 
     lines.append(sep)
 
-    # TOTAL (emphasized)
-    total_str = format_money(ctx.total_paise)
-    lines.append(_pad_center(f"TOTAL  {total_str}", char_width))
+    # Installation, then the emphasised line the customer pays.
+    if ctx.has_installation:
+        goods = format_money(ctx.total_paise, include_symbol=False)
+        lines.append(f"Goods total{_pad_right(goods, char_width - len('Goods total'))}")
+        inst = format_money(ctx.installation_paise, include_symbol=False)
+        lines.append(f"Installation{_pad_right(inst, char_width - len('Installation'))}")
+        if ctx.installation_note:
+            lines.append(f"  ({ctx.installation_note[:char_width - 4]})")
+
+    label = "AMOUNT DUE" if ctx.has_installation else "TOTAL"
+    total_str = format_money(ctx.amount_due_paise)
+    lines.append(_pad_center(f"{label}  {total_str}", char_width))
 
     lines.append(sep)
 
-    # Payment
-    paid_str = format_money(ctx.tendered_paise, include_symbol=False)
-    lines.append(f"Cash{_pad_right(paid_str, char_width - len('Cash'))}")
+    # Payment — one line per tender, and the khata remainder if any. This
+    # used to say "Cash" whatever was actually used.
+    for t in ctx.cash_tenders:
+        amt = format_money(t.amount_paise, include_symbol=False)
+        lines.append(f"{t.label}{_pad_right(amt, char_width - len(t.label))}")
 
-    if ctx.change_paise > 0:
-        change_str = format_money(ctx.change_paise, include_symbol=False)
+    change = sum(t.change_paise for t in ctx.cash_tenders)
+    if change > 0:
+        change_str = format_money(change, include_symbol=False)
         lines.append(f"Change{_pad_right(change_str, char_width - len('Change'))}")
 
+    if ctx.credit_paise > 0:
+        due = format_money(ctx.credit_paise, include_symbol=False)
+        label = "BALANCE DUE (Khata)"
+        lines.append(f"{label}{_pad_right(due, char_width - len(label))}")
+
     lines.append(sep_dash)
+
+    # Warranty conditions. English only — the printer has no Urdu characters —
+    # and only when something on the bill actually carries a serial.
+    if ctx.warranty_en and ctx.has_serials:
+        lines.append(_pad_center("WARRANTY", char_width))
+        for chunk in _wrap(ctx.warranty_en, char_width):
+            lines.append(chunk)
+        lines.append(sep_dash)
 
     # Footer
     lines.append(_pad_center("Thank you for your business!", char_width))

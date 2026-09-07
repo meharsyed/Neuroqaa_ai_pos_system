@@ -13,6 +13,8 @@ import ReturnsPage from "@/pages/ReturnsPage";
 import ActivityPage from "@/pages/ActivityPage";
 import AuditPage from "@/pages/AuditPage";
 import SettingsPage from "@/pages/SettingsPage";
+import UsersPage from "@/pages/UsersPage";
+import QuotationsPage from "@/pages/QuotationsPage";
 export const router = createBrowserRouter([
   {
     path: "/login",
@@ -34,12 +36,14 @@ export const router = createBrowserRouter([
       { path: "/products", element: <ProductsPage /> },
       { path: "/bills",     element: <BillsPage /> },
       { path: "/returns",   element: <ReturnsPage /> },
+      { path: "/quotations", element: <QuotationsPage /> },
       { path: "/customers", element: <CustomersPage /> },
       { path: "/khata",     element: <KhataPage /> },
       { path: "/shifts",    element: <ShiftsPage /> },
       { path: "/activity",  element: <ActivityPage /> },
       { path: "/audit",     element: <AuditPage /> },
       { path: "/settings",  element: <SettingsPage /> },
+      { path: "/users",     element: <UsersPage /> },
     ],
   },
 ]);

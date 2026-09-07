@@ -14,7 +14,23 @@ const GROUPS: { label: string; keys: string[] }[] = [
   { label: "Shop Information", keys: ["shop_name", "shop_address", "shop_phone", "shop_email"] },
   { label: "Receipt", keys: ["receipt_header", "receipt_footer", "receipt_width", "default_receipt_template", "show_serial_numbers_on_receipt"] },
   { label: "Thermal Printer", keys: ["thermal_printer_ip", "thermal_printer_port"] },
-  { label: "Sales & Stock", keys: ["tax_pct", "low_stock_threshold"] },
+  { label: "Sales & Stock", keys: ["tax_pct", "low_stock_threshold", "cashier_return_limit_paise"] },
+  {
+    label: "Warranty Clause",
+    keys: [
+      "warranty_note_enabled",
+      "warranty_note_language",
+      "warranty_note_en",
+      "warranty_note_ur",
+    ],
+  },
+];
+
+/** Which language the warranty clause prints in. */
+const WARRANTY_LANGUAGES = [
+  { value: "en", label: "English only" },
+  { value: "ur", label: "Urdu only" },
+  { value: "both", label: "Both — English then Urdu" },
 ];
 
 // ── Receipt template picker (with mini visual previews) ─────────────────────
@@ -43,10 +59,10 @@ function ThermalPreview() {
 function InvoicePreview() {
   return (
     <div className="w-20 h-28 bg-white border rounded-sm shadow-md overflow-hidden shrink-0 flex flex-col">
-      <div className="h-2 bg-blue-600 w-full" />
+      <div className="h-2 bg-info w-full" />
       <div className="flex items-center gap-1 px-1.5 pt-2">
-        <div className="w-3 h-3 rounded-full bg-blue-600 shrink-0" />
-        <p className="text-[7px] font-bold text-blue-600 leading-none tracking-wide">INVOICE</p>
+        <div className="w-3 h-3 rounded-full bg-info shrink-0" />
+        <p className="text-[7px] font-bold text-info leading-none tracking-wide">INVOICE</p>
       </div>
       <div className="flex flex-col gap-1 px-1.5 pt-2.5">
         <div className="flex justify-between items-center">
@@ -121,7 +137,7 @@ function ReceiptTemplateField({
         ))}
       </div>
       {value === "thermal" && !thermalConfigured && (
-        <div className="flex items-start gap-2 rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">
+        <div className="flex items-start gap-2 rounded-lg bg-destructive-bg border border-destructive/40 px-3 py-2 text-xs text-destructive">
           <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
           <span>
             No thermal printer IP is configured yet. Printing will fail until you set one in the
@@ -130,7 +146,7 @@ function ReceiptTemplateField({
         </div>
       )}
       {value === "invoice" && (
-        <div className="flex items-start gap-2 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 text-xs text-blue-800">
+        <div className="flex items-start gap-2 rounded-lg bg-info-bg border border-info/40 px-3 py-2 text-xs text-info">
           <Printer className="h-3.5 w-3.5 mt-0.5 shrink-0" />
           <span>
             No setup needed. When you print, your computer's own Print dialog opens and shows every
@@ -206,7 +222,7 @@ export default function SettingsPage() {
       <div className="max-w-2xl space-y-8">
 
       {!canEdit && (
-        <div className="rounded-lg bg-yellow-50 border border-yellow-200 px-4 py-3 text-sm text-yellow-800">
+        <div className="rounded-lg bg-warning-bg border border-warning/40 px-4 py-3 text-sm text-warning">
           You have read-only access. Only owners and managers can change settings.
         </div>
       )}
@@ -236,7 +252,62 @@ export default function SettingsPage() {
                         thermalConfigured={!!values["thermal_printer_ip"]?.trim()}
                       />
                     </>
-                  ) : setting.key === "show_serial_numbers_on_receipt" ? (
+                  ) : setting.key === "warranty_note_language" ? (
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">{setting.label}</label>
+                      <div className="flex flex-wrap gap-2">
+                        {WARRANTY_LANGUAGES.map((opt) => (
+                          <button
+                            key={opt.value}
+                            type="button"
+                            disabled={!canEdit}
+                            onClick={() => handleChange(setting.key, opt.value)}
+                            className={`rounded-lg border-2 px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 ${
+                              (values[setting.key] ?? "en") === opt.value
+                                ? "border-primary bg-primary/5 text-primary"
+                                : "border-border text-muted-foreground hover:border-primary/50"
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Applies to the A4/A5 invoice and the shared web bill. The 80&nbsp;mm
+                        till slip is always English — a thermal printer has no Urdu
+                        characters — and prints the clause only when the bill carries
+                        serial numbers.
+                      </p>
+                    </div>
+                  ) : setting.key === "warranty_note_ur" ? (
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">{setting.label}</label>
+                      <textarea
+                        dir="rtl"
+                        lang="ur"
+                        rows={3}
+                        value={values[setting.key] ?? ""}
+                        onChange={(e) => handleChange(setting.key, e.target.value)}
+                        disabled={!canEdit}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-right text-base leading-loose disabled:opacity-50"
+                        style={{ fontFamily: '"Noto Naskh Arabic","Jameel Noori Nastaleeq",serif' }}
+                      />
+                      <p className="text-xs text-muted-foreground">{setting.description}</p>
+                    </div>
+                  ) : setting.key === "warranty_note_en" ? (
+                    <div className="space-y-1.5">
+                      <label className="text-sm font-medium">{setting.label}</label>
+                      <textarea
+                        rows={3}
+                        value={values[setting.key] ?? ""}
+                        onChange={(e) => handleChange(setting.key, e.target.value)}
+                        disabled={!canEdit}
+                        className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-50"
+                      />
+                      <p className="text-xs text-muted-foreground">{setting.description}</p>
+                    </div>
+                  ) : setting.key === "warranty_note_enabled" ||
+                      setting.key === "show_serial_numbers_on_receipt" ? (
                     <label className="flex items-center gap-2 cursor-pointer select-none">
                       <input
                         type="checkbox"

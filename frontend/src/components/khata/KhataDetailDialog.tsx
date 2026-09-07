@@ -329,12 +329,17 @@ export default function KhataDetailDialog({
                         <p className="truncate font-mono text-sm">{s.sale_number}</p>
                         <p className="text-xs text-muted-foreground">
                           <DateTime value={s.created_at} format="short" /> · {s.item_count} item(s)
+                          {s.amount_paid_paise > 0 && (
+                            <> · paid <Money paise={s.amount_paid_paise} /> at the till</>
+                          )}
                         </p>
                       </div>
                       {s.status === "voided" && <Badge variant="danger">Voided</Badge>}
+                      {/* The amount that went on the khata — on a part-paid
+                          bill that is less than the bill itself. */}
                       <p className={cn("shrink-0 text-sm font-semibold tabular-nums",
                                        s.status === "voided" && "line-through text-muted-foreground")}>
-                        <Money paise={s.total_paise} />
+                        <Money paise={s.credit_paise || s.total_paise} />
                       </p>
                     </div>
                   ))}

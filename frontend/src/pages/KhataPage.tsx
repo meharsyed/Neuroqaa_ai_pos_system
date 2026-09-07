@@ -21,6 +21,7 @@ import { useToast } from "@/lib/use-toast";
 import { useAuthStore } from "@/store/authStore";
 import { cn } from "@/lib/utils";
 import type { Customer } from "@/types/customers";
+import { useTranslation } from "@/lib/useTranslation";
 
 type BucketId = "current" | "days_30" | "days_60" | "days_90_plus";
 
@@ -62,6 +63,7 @@ function Insight({
 }
 
 export default function KhataPage() {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const { toast } = useToast();
   const role = useAuthStore((s) => s.user?.role);
@@ -142,8 +144,8 @@ export default function KhataPage() {
 
   const header = (
     <PageHeader
-      title="Khata / Customer Credit"
-      subtitle="Outstanding balances, ageing and collections"
+      title={t("khata.title")}
+      subtitle={t("khata.subtitle")}
     />
   );
 

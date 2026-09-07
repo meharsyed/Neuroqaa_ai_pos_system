@@ -2,6 +2,8 @@ from decimal import Decimal
 
 from rest_framework import serializers
 
+from apps.accounts.permissions import can_see_cost_prices
+
 from .models import Category, Inventory, Product, StockMovement
 from .money import Money
 
@@ -54,6 +56,21 @@ class ProductSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "image_url", "created_at", "updated_at"]
+
+    def to_representation(self, instance):
+        """
+        Strip cost and margin for anyone below manager.
+
+        Knowing what a DVR costs tells a cashier exactly how far a price can be
+        discounted before anyone notices — so the counter simply never receives
+        the number.
+        """
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        if request is not None and not can_see_cost_prices(request.user):
+            data.pop("cost_price_paise", None)
+            data.pop("cost_price", None)
+        return data
 
     def get_cost_price(self, obj) -> str:
         return str(Money(obj.cost_price_paise))

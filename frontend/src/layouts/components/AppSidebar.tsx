@@ -13,6 +13,8 @@ import {
   ShieldCheck,
   FileBarChart,
   Wallet,
+  UserCog,
+  FileText,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useTranslation } from "@/lib/useTranslation";
@@ -20,8 +22,19 @@ import { catalogApi } from "@/lib/catalog";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { LanguageToggle } from "@/components/LanguageToggle";
+import { can } from "@/lib/permissions";
+import type { User } from "@/types/auth";
 
-const NAV_SECTIONS = [
+interface NavItem {
+  to: string;
+  labelKey: string;
+  icon: React.FC<{ className?: string }>;
+  badgeKey?: string;
+  /** Omitted means everyone signed in may see it. */
+  allow?: (user: User | null) => boolean;
+}
+
+const NAV_SECTIONS: { labelKey: string; items: NavItem[] }[] = [
   {
     labelKey: "nav.sectionOperations",
     items: [
@@ -30,6 +43,7 @@ const NAV_SECTIONS = [
       { to: "/checkout", labelKey: "nav.checkout", icon: ShoppingCart },
       { to: "/bills", labelKey: "nav.bills", icon: Receipt },
       { to: "/returns", labelKey: "nav.returns", icon: RotateCcw },
+      { to: "/quotations", labelKey: "nav.quotations", icon: FileText },
     ],
   },
   {
@@ -37,13 +51,27 @@ const NAV_SECTIONS = [
     items: [
       { to: "/customers", labelKey: "nav.customers", icon: Users },
       { to: "/khata", labelKey: "nav.khata", icon: Wallet },
-      { to: "/audit", labelKey: "nav.audit", icon: FileBarChart },
+      { to: "/audit", labelKey: "nav.audit", icon: FileBarChart, allow: can.viewReports },
       { to: "/shifts", labelKey: "nav.shifts", icon: Clock },
-      { to: "/activity", labelKey: "nav.activityLog", icon: ShieldCheck },
-      { to: "/settings", labelKey: "nav.settings", icon: Settings },
+      { to: "/activity", labelKey: "nav.activityLog", icon: ShieldCheck, allow: can.viewActivityLog },
+      { to: "/settings", labelKey: "nav.settings", icon: Settings, allow: can.editSettings },
+      { to: "/users", labelKey: "nav.users", icon: UserCog, allow: can.manageUsers },
     ],
   },
 ];
+
+/**
+ * Drop the pages this role cannot open.
+ *
+ * A cashier staring all day at Audit and Settings links that answer 403 is bad
+ * product, not security — the server is what refuses them.
+ */
+function visibleSections(user: User | null) {
+  return NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: section.items.filter((item) => !item.allow || item.allow(user)),
+  })).filter((section) => section.items.length > 0);
+}
 
 interface AppSidebarProps {
   isCollapsed?: boolean;
@@ -96,7 +124,7 @@ export function AppSidebar({ isCollapsed = false }: AppSidebarProps) {
 
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
-        {NAV_SECTIONS.map(({ labelKey, items }) => (
+        {visibleSections(user).map(({ labelKey, items }) => (
           <div key={labelKey}>
             {!isCollapsed && (
               <p className="px-3 mb-1.5 text-2xs font-semibold uppercase tracking-[0.14em] text-chrome-muted/70">

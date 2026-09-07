@@ -102,8 +102,8 @@ class CustomerViewSet(
         customer = self.get_object()
         qs = (
             Sale.objects.filter(customer=customer)
-            .select_related("cashier", "payment", "customer")
-            .prefetch_related("items__product")
+            .select_related("cashier", "customer")
+            .prefetch_related("items__product", "payments")
             .order_by("-created_at")
         )
         page = self.paginate_queryset(qs)
@@ -130,9 +130,10 @@ class CustomerViewSet(
         )
 
         credit_sales = (
-            Sale.objects.filter(customer=customer, payment__method="credit")
-            .select_related("payment")
-            .annotate(item_count=Count("items"))
+            Sale.objects.filter(customer=customer, payments__method="credit")
+            .distinct()
+            .prefetch_related("payments")
+            .annotate(item_count=Count("items", distinct=True))
             .order_by("-created_at")[:100]
         )
 
@@ -159,6 +160,16 @@ class CustomerViewSet(
                         "sale_number": s.sale_number,
                         "created_at": s.created_at,
                         "total_paise": s.total_paise,
+                        # What the bill was, and how much of it actually went
+                        # on the khata — a part-paid bill puts on less than
+                        # its total, and showing the total would misstate the
+                        # debt this sale created.
+                        "amount_paid_paise": s.amount_paid_paise,
+                        "credit_paise": s.credit_paise,
+                        # Labour billed on this sale. Owed by the customer,
+                        # owed onward to a technician — never shop revenue.
+                        "installation_paise": s.installation_paise,
+                        "amount_due_paise": s.amount_due_paise,
                         "item_count": s.item_count,
                         "status": s.status,
                     }

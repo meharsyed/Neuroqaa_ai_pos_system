@@ -18,7 +18,15 @@ export function useTranslation() {
 
   function t(key: string, vars?: Vars): string {
     const val = resolve(dict, key);
-    if (typeof val !== "string") return key;
+    if (typeof val !== "string") {
+      // Falling back to the raw key means the user reads "bills.title" on a
+      // screen. Silent in production — a missing word is better than a broken
+      // page — but never silent while someone is working on it.
+      if (import.meta.env.DEV) {
+        console.warn(`[i18n] no "${language}" translation for "${key}"`);
+      }
+      return key;
+    }
     if (!vars) return val;
     return Object.entries(vars).reduce(
       (acc, [k, v]) => acc.split(`{${k}}`).join(String(v)),

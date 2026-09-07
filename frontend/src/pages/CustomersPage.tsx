@@ -19,6 +19,7 @@ import { customersApi } from "@/lib/customers";
 import { useToast } from "@/lib/use-toast";
 import type { Customer, CustomerGender } from "@/types/customers";
 import type { Sale } from "@/types/sales";
+import { useTranslation } from "@/lib/useTranslation";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ const GENDER_LABELS: Record<CustomerGender, string> = {
 
 function GenderBadge({ gender }: { gender: CustomerGender }) {
   const cls: Record<CustomerGender, string> = {
-    M: "bg-blue-100 text-blue-700",
+    M: "bg-info-bg text-info",
     F: "bg-teal-100 text-teal-700",
     O: "bg-muted text-muted-foreground",
   };
@@ -54,6 +55,7 @@ function CustomerHistoryModal({
   customer: Customer;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [page, setPage] = useState(1);
 
   const { data, isLoading } = useQuery({
@@ -107,11 +109,11 @@ function CustomerHistoryModal({
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 border-b">
                   <tr>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Bill #</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Date</th>
-                    <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Items</th>
-                    <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total</th>
-                    <th className="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.billNumber")}</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.date")}</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.items")}</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.total")}</th>
+                    <th className="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.status")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -134,11 +136,11 @@ function CustomerHistoryModal({
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 border-b">
                   <tr>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Bill #</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Date</th>
-                    <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Items</th>
-                    <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total</th>
-                    <th className="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.billNumber")}</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.date")}</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.items")}</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.total")}</th>
+                    <th className="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.status")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -308,6 +310,7 @@ function AddCustomerModal({ onClose }: { onClose: () => void }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function CustomersPage() {
+  const { t } = useTranslation();
   const [search, setSearch]           = useState("");
   const [page, setPage]               = useState(1);
   const [selected, setSelected]       = useState<Customer | null>(null);
@@ -326,11 +329,11 @@ export default function CustomersPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Customers"
-        subtitle={`${totalCount.toLocaleString()} registered customer${totalCount !== 1 ? "s" : ""}`}
+        title={t("customers.title")}
+        subtitle={t("customers.subtitle", { count: totalCount.toLocaleString() })}
         actions={
           <Button size="sm" onClick={() => setShowAdd(true)} className="gap-1.5">
-            <Plus className="h-4 w-4" /> Add Customer
+            <Plus className="h-4 w-4" /> {t("customers.newCustomer")}
           </Button>
         }
       />
@@ -354,12 +357,12 @@ export default function CustomersPage() {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 border-b">
                 <tr>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Customer</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Phone</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Gender</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Purchases</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total Spent</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Joined</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.customer")}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.phone")}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("customers.colGender")}</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("customers.colPurchases")}</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("customers.colTotalSpent")}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("customers.colJoined")}</th>
                   <th className="w-10" />
                 </tr>
               </thead>
@@ -394,12 +397,12 @@ export default function CustomersPage() {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 border-b">
                 <tr>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Customer</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Phone</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Gender</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Purchases</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total Spent</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Joined</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.customer")}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.phone")}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("customers.colGender")}</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("customers.colPurchases")}</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("customers.colTotalSpent")}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("customers.colJoined")}</th>
                   <th className="w-10" />
                 </tr>
               </thead>

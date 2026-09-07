@@ -23,7 +23,9 @@ import ShareReceiptButton from "@/components/ShareReceiptButton";
 import { useTranslation } from "@/lib/useTranslation";
 import { toast } from "@/lib/use-toast";
 import { useHeldCartsStore } from "@/store/heldCartsStore";
-import type { CartItem, PaymentMethod, Sale } from "@/types/sales";
+import type { CartItem, Sale, TenderInput } from "@/types/sales";
+import type { QuotationCart } from "@/types/quotations";
+import { quotationsApi } from "@/lib/quotations";
 import type { Product } from "@/types/catalog";
 import type { Customer } from "@/types/customers";
 
@@ -86,6 +88,51 @@ export default function CheckoutPage() {
   const discountRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { barcodeRef.current?.focus(); }, []);
+
+  /**
+   * Pick up a quotation the Quotations page handed over.
+   *
+   * Read once and cleared, so refreshing the till does not silently reload
+   * somebody's cart from an hour ago. Only catalogue lines arrive here —
+   * off-catalogue lines have no stock to deduct, and the Quotations page has
+   * already told the cashier they have to be added by hand.
+   */
+  const [fromQuotation, setFromQuotation] = useState<{
+    id: number; number: string; offCatalogue: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const raw = sessionStorage.getItem("pos.quotationCart");
+    if (!raw) return;
+    sessionStorage.removeItem("pos.quotationCart");
+    try {
+      const cart = JSON.parse(raw) as QuotationCart;
+      setCartItems(
+        cart.items.map((i) => ({
+          product_id: i.product_id,
+          product_sku: i.sku,
+          product_name: i.name,
+          product_unit: "",
+          qty: parseFloat(i.qty) || 1,
+          unit_price_paise: i.unit_price_paise,
+          discount_pct: 0,
+          discount_paise: i.discount_paise,
+        }))
+      );
+      if (cart.tax_pct !== null) setTaxPctStr(String(parseFloat(cart.tax_pct)));
+      if (cart.installation_paise) {
+        setInstallationStr(String(cart.installation_paise / 100));
+        setInstallationNote(cart.installation_note);
+      }
+      setFromQuotation({
+        id: cart.quotation_id,
+        number: cart.number,
+        offCatalogue: cart.off_catalogue_items.length,
+      });
+    } catch {
+      // A malformed payload is not worth taking the till down for.
+    }
+  }, []);
 
   // ── Tax setting ────────────────────────────────────────────────────────
 
@@ -342,7 +389,7 @@ export default function CheckoutPage() {
       setBarcodeError(t("checkout.barcodeNotFound", { code: barcode }));
       setBarcodeVal("");
     }
-  }, [barcodeVal, addToCart]);
+  }, [barcodeVal, addToCart, t]);
 
   // ── Totals ─────────────────────────────────────────────────────────────
 
@@ -354,16 +401,38 @@ export default function CheckoutPage() {
     () => Math.min(100, Math.max(0, parseFloat(saleDiscountPct) || 0)),
     [saleDiscountPct]
   );
+  // Tax on THIS bill. Seeded from the shop rate but editable at the till —
+  // an empty box means the shop rate, so clearing it never means "no tax by
+  // accident".
+  const [taxPctStr, setTaxPctStr] = useState<string | null>(null);
+  const [installationStr, setInstallationStr] = useState("");
+  const [installationNote, setInstallationNote] = useState("");
+
   const billDiscountPaise = useMemo(
     () => Math.round(netSubtotalPaise * billDiscountNum / 100),
     [netSubtotalPaise, billDiscountNum]
   );
   const taxableAmount = netSubtotalPaise - billDiscountPaise;
+  // null means "not touched" — use the shop rate.
+  const effectiveTaxPct =
+    taxPctStr === null || taxPctStr === "" ? taxPct : Math.max(0, parseFloat(taxPctStr) || 0);
   const taxPaise = useMemo(
-    () => (applyTax && taxPct > 0 ? Math.round(taxableAmount * taxPct / 100) : 0),
-    [applyTax, taxPct, taxableAmount]
+    () => (applyTax && effectiveTaxPct > 0
+      ? Math.round(taxableAmount * effectiveTaxPct / 100)
+      : 0),
+    [applyTax, effectiveTaxPct, taxableAmount]
   );
-  const totalPaise = Math.max(0, taxableAmount + taxPaise);
+  const taxIsOverridden = applyTax && taxPctStr !== null && effectiveTaxPct !== taxPct;
+  const goodsTotalPaise = Math.max(0, taxableAmount + taxPaise);
+
+  // Installation / labour billed on this bill and handed on to the technician
+  // who did the work. The customer pays it, so it is part of the amount due —
+  // but it is never the shop's revenue, so it is kept out of the goods total.
+  const installationPaise = Math.max(
+    0,
+    Math.round((parseFloat(installationStr) || 0) * 100)
+  );
+  const totalPaise = goodsTotalPaise + installationPaise;
 
   // ── Create sale mutation ───────────────────────────────────────────────
 
@@ -371,6 +440,15 @@ export default function CheckoutPage() {
     mutationFn: salesApi.create,
     onSuccess: (sale) => {
       setCompletedSale(sale);
+      if (fromQuotation) {
+        // Best effort: the sale is already made, so a failure here must not
+        // surface as an error the cashier can do anything about.
+        quotationsApi.markConverted(fromQuotation.id, sale.id).catch(() => {});
+        setFromQuotation(null);
+      }
+      setInstallationStr("");
+      setInstallationNote("");
+      setTaxPctStr(null);
       setReceiptTemplate(defaultReceiptTemplate);
       setShowPayment(false);
       setSaleError("");
@@ -409,7 +487,7 @@ export default function CheckoutPage() {
   });
 
   const handlePaymentConfirm = useCallback(
-    async (method: PaymentMethod, amountTenderedPaise: number) => {
+    async (tenders: TenderInput[]) => {
       // Resolve customer: use existing found customer, or create a new one on the fly
       let customer_id: number | null = foundCustomer?.id ?? null;
       if (!customer_id && customerPhone.trim() && customerStatus === "new") {
@@ -432,14 +510,23 @@ export default function CheckoutPage() {
           discount_paise: i.discount_paise,
           serials: i.serials && i.serials.length > 0 ? i.serials : undefined,
         })),
-        payment_method: method,
-        amount_tendered_paise: amountTenderedPaise,
+        // The tenders are what was actually handed over; whatever they leave
+        // unpaid the server puts on the customer's khata. payment_method is
+        // still sent for older clients and is ignored when tenders is present.
+        payment_method: tenders.length > 0 ? tenders[0].method : "credit",
+        amount_tendered_paise:
+          tenders.find((t) => t.method === "cash")?.amount_tendered_paise ?? 0,
+        tenders: tenders.length > 0 ? tenders : undefined,
         discount_paise: billDiscountPaise,
-        tax_paise: taxPaise,
+        // The rate, so the server computes the amount itself and stamps the
+        // rate on the bill — it no longer takes the browser's word for the tax.
+        tax_pct: applyTax ? effectiveTaxPct : 0,
+        installation_paise: installationPaise,
+        installation_note: installationNote.trim(),
         customer_id,
       });
     },
-    [cartItems, billDiscountPaise, taxPaise, foundCustomer, customerPhone, customerName, customerStatus, submitSale]
+    [cartItems, billDiscountPaise, applyTax, effectiveTaxPct, installationPaise, installationNote, foundCustomer, customerPhone, customerName, customerStatus, submitSale]
   );
 
   // ── Keyboard shortcuts ─────────────────────────────────────────────────
@@ -488,12 +575,42 @@ export default function CheckoutPage() {
           <div className="bg-white rounded-xl border shadow-sm p-4 space-y-2 text-sm text-start">
             <div className="flex justify-between items-center">
               <span className="text-muted-foreground">{t("checkout.totalCharged")}</span>
-              <span className="font-bold text-2xl tabular-nums"><Money paise={completedSale.total_paise} /></span>
+              <span className="font-bold text-2xl tabular-nums">
+                <Money paise={completedSale.amount_due_paise ?? completedSale.total_paise} />
+              </span>
             </div>
-            {completedSale.payment.change_paise > 0 && (
+            {completedSale.installation_paise > 0 && (
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>of which installation</span>
+                <span className="tabular-nums"><Money paise={completedSale.installation_paise} /></span>
+              </div>
+            )}
+            {/* A bill can be settled by several tenders, so show each one
+                rather than only the largest. */}
+            {completedSale.payments && completedSale.payments.length > 1 && (
+              <div className="space-y-1 border-t pt-2 text-xs">
+                {completedSale.payments.map((p) => (
+                  <div key={p.id ?? p.method} className="flex justify-between">
+                    <span className="text-muted-foreground">
+                      {p.method === "credit" ? "On khata" : `Paid (${p.method.replace("_", " ")})`}
+                    </span>
+                    <span className={`tabular-nums ${p.method === "credit" ? "font-semibold text-warning" : ""}`}>
+                      <Money paise={p.amount_paise} />
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {completedSale.credit_paise > 0 && completedSale.payments?.length === 1 && (
+              <div className="flex justify-between border-t pt-2 font-semibold text-warning">
+                <span>On khata</span>
+                <span className="tabular-nums"><Money paise={completedSale.credit_paise} /></span>
+              </div>
+            )}
+            {(completedSale.payment?.change_paise ?? 0) > 0 && (
               <div className="flex justify-between text-teal-600 font-semibold border-t pt-2">
                 <span>{t("checkout.changeToGive")}</span>
-                <span className="tabular-nums text-lg font-bold"><Money paise={completedSale.payment.change_paise} /></span>
+                <span className="tabular-nums text-lg font-bold"><Money paise={completedSale.payment!.change_paise} /></span>
               </div>
             )}
             <div className="flex justify-between text-xs text-muted-foreground border-t pt-2">
@@ -501,7 +618,7 @@ export default function CheckoutPage() {
               <span>{completedSale.items.length}</span>
             </div>
             {completedSale.discount_paise > 0 && (
-              <div className="flex justify-between text-xs text-amber-600">
+              <div className="flex justify-between text-xs text-warning">
                 <span>{t("checkout.billDiscount")}</span>
                 <span>− <Money paise={completedSale.discount_paise} /></span>
               </div>
@@ -709,7 +826,7 @@ export default function CheckoutPage() {
                               {item.product_sku}
                             </span>
                             {item.discount_pct > 0 && (
-                              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-700 bg-amber-100 border border-amber-200 rounded px-1 py-0 leading-4">
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-warning bg-warning-bg border border-warning/40 rounded px-1 py-0 leading-4">
                                 <Tag className="h-2 w-2" />
                                 {item.discount_pct}% {t("checkout.off")}
                               </span>
@@ -771,7 +888,7 @@ export default function CheckoutPage() {
                               }}
                               className={`w-14 text-right tabular-nums text-xs border rounded pl-1 pr-5 py-1 focus:outline-none focus:ring-2 transition-colors ${
                                 item.discount_pct > 0
-                                  ? "border-amber-300 bg-amber-50 text-amber-800 font-semibold focus:ring-amber-200"
+                                  ? "border-warning/40 bg-warning-bg text-warning font-semibold focus:ring-warning/40"
                                   : "border-border bg-background text-muted-foreground focus:ring-primary/20"
                               }`}
                             />
@@ -814,9 +931,15 @@ export default function CheckoutPage() {
             )}
           </div>
 
-          {/* Totals footer */}
+          {/* Totals footer.
+
+              Every row here is `justify-between` across the cart pane, which on
+              a wide till screen threw the label and its number a thousand
+              pixels apart. Capping the column and pushing it right keeps each
+              label next to the number it belongs to, and mirrors how the same
+              figures are stacked on the printed bill. */}
           <div className="border-t bg-card shrink-0">
-            <div className="px-4 pt-3 pb-2 space-y-1.5 text-sm">
+            <div className="ms-auto w-full max-w-md px-4 pt-3 pb-2 space-y-1.5 text-sm">
 
               {/* Net subtotal (after item discounts) */}
               <div className="flex justify-between text-muted-foreground">
@@ -826,17 +949,21 @@ export default function CheckoutPage() {
                     ({totalUnits} {totalUnits !== 1 ? t("checkout.units") : t("checkout.unit")})
                   </span>
                 </span>
-                <span className="tabular-nums"><Money paise={netSubtotalPaise} /></span>
+                <span className="w-28 text-right tabular-nums">
+                  <Money paise={netSubtotalPaise} />
+                </span>
               </div>
 
               {/* Item discounts summary */}
               {itemDiscountsTotalPaise > 0 && (
-                <div className="flex justify-between text-xs text-amber-600">
+                <div className="flex justify-between text-xs text-warning">
                   <span className="flex items-center gap-1">
                     <Tag className="h-3 w-3" />
                     {t("checkout.itemDiscounts")}
                   </span>
-                  <span className="tabular-nums">− <Money paise={itemDiscountsTotalPaise} /></span>
+                  <span className="w-28 text-right tabular-nums">
+                    − <Money paise={itemDiscountsTotalPaise} />
+                  </span>
                 </div>
               )}
 
@@ -864,8 +991,8 @@ export default function CheckoutPage() {
                     </span>
                   </div>
                   <span
-                    className={`text-xs tabular-nums w-24 text-right font-medium ${
-                      billDiscountPaise > 0 ? "text-amber-600" : "text-muted-foreground/30"
+                    className={`w-28 text-right text-sm font-medium tabular-nums ${
+                      billDiscountPaise > 0 ? "text-warning" : "text-muted-foreground/30"
                     }`}
                   >
                     {billDiscountPaise > 0 ? <>− <Money paise={billDiscountPaise} /></> : "—"}
@@ -874,34 +1001,120 @@ export default function CheckoutPage() {
               </div>
 
 
-              {/* Tax toggle — always visible; shows "Set in Settings" if rate is 0 */}
+              {/* Tax — the rate defaults to the shop setting and can be changed
+                  on this bill. Every change is recorded in the activity log. */}
               <div className="flex items-center justify-between">
-                <label className={`flex items-center gap-2 cursor-pointer select-none ${taxPct > 0 ? "text-muted-foreground" : "text-muted-foreground/40"}`}>
+                <label className="flex cursor-pointer select-none items-center gap-2 text-muted-foreground">
                   <input
                     type="checkbox"
                     checked={applyTax}
-                    disabled={taxPct === 0}
                     onChange={(e) => setApplyTax(e.target.checked)}
                     className="h-3.5 w-3.5 accent-primary"
                   />
-                  <span className="text-xs">
-                    {taxPct > 0 ? t("checkout.taxWithRate", { pct: taxPct }) : t("checkout.taxSetInSettings")}
-                  </span>
+                  <span>Tax</span>
                 </label>
-                <span
-                  className={`text-xs tabular-nums w-24 text-right font-medium ${
-                    applyTax && taxPaise > 0 ? "text-orange-600" : "text-muted-foreground/30"
-                  }`}
-                >
-                  {applyTax && taxPaise > 0 ? <>+ <Money paise={taxPaise} /></> : "—"}
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      disabled={!applyTax}
+                      value={taxPctStr ?? (taxPct || 0)}
+                      onChange={(e) => setTaxPctStr(e.target.value)}
+                      onFocus={(e) => e.target.select()}
+                      className="h-7 w-20 pr-7 text-right font-mono text-sm"
+                      aria-label="Tax rate for this bill"
+                    />
+                    <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">
+                      %
+                    </span>
+                  </div>
+                  <span
+                    className={`w-28 text-right text-sm font-medium tabular-nums ${
+                      applyTax && taxPaise > 0 ? "text-warning" : "text-muted-foreground/30"
+                    }`}
+                  >
+                    {applyTax && taxPaise > 0 ? <>+ <Money paise={taxPaise} /></> : "—"}
                   </span>
                 </div>
+              </div>
+
+              {taxIsOverridden && (
+                <p className="text-[11px] text-muted-foreground">
+                  Shop rate is {taxPct}%. This bill uses {effectiveTaxPct}% —{" "}
+                  <button
+                    type="button"
+                    className="underline underline-offset-2"
+                    onClick={() => setTaxPctStr(null)}
+                  >
+                    reset
+                  </button>
+                </p>
+              )}
+
+              {/* Installation / labour — optional, and untaxed. The customer
+                  pays it and the shop passes it to the technician, so it is
+                  added after tax and never counted as revenue. */}
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Installation / labour</span>
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <span className="pointer-events-none absolute start-2 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
+                      Rs
+                    </span>
+                    <Input
+                      type="number"
+                      min={0}
+                      step={100}
+                      placeholder="0"
+                      value={installationStr}
+                      onChange={(e) => setInstallationStr(e.target.value)}
+                      onFocus={(e) => e.target.select()}
+                      className="w-24 h-7 ps-7 text-right font-mono text-sm"
+                      aria-label="Installation or labour charge"
+                    />
+                  </div>
+                  <span
+                    className={`w-28 text-right text-sm font-medium tabular-nums ${
+                      installationPaise > 0 ? "text-info" : "text-muted-foreground/30"
+                    }`}
+                  >
+                    {installationPaise > 0 ? <>+ <Money paise={installationPaise} /></> : "—"}
+                  </span>
+                </div>
+              </div>
+
+              {installationPaise > 0 && (
+                <div className="flex items-center justify-between gap-2">
+                  <Input
+                    value={installationNote}
+                    onChange={(e) => setInstallationNote(e.target.value)}
+                    placeholder="Technician or job (shown on the bill)"
+                    maxLength={200}
+                    className="h-7 text-xs"
+                    aria-label="Installation note"
+                  />
+                </div>
+              )}
             </div>
 
-            {/* Grand total */}
-            <div className="px-4 py-3 border-t bg-muted/30 flex justify-between items-center">
-              <span className="font-bold text-base tracking-wide">{t("checkout.total")}</span>
-              <span className="tabular-nums font-bold text-2xl"><Money paise={totalPaise} /></span>
+            {/* Grand total. With installation on the bill the goods total is
+                shown above it, so the shop can still see what it earned. */}
+            {installationPaise > 0 && (
+              <div className="ms-auto w-full max-w-md flex items-center justify-between px-4 pt-2 text-xs text-muted-foreground">
+                <span>Goods total</span>
+                <span className="tabular-nums"><Money paise={goodsTotalPaise} /></span>
+              </div>
+            )}
+            <div className="border-t bg-muted/30">
+              <div className="ms-auto w-full max-w-md flex items-center justify-between px-4 py-3">
+                <span className="font-bold text-base tracking-wide">
+                  {installationPaise > 0 ? "Amount due" : t("checkout.total")}
+                </span>
+                <span className="tabular-nums font-bold text-2xl"><Money paise={totalPaise} /></span>
+              </div>
             </div>
 
             {/* Action buttons */}
@@ -989,9 +1202,9 @@ export default function CheckoutPage() {
                   <span className="ms-auto shrink-0 text-teal-500">{foundCustomer.total_sales} {t("checkout.visits")}</span>
                 </div>
                 {foundCustomer.outstanding_paise > 0 && (
-                  <div className="flex items-center justify-between text-xs bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
-                    <span className="font-medium text-amber-700">Outstanding Balance</span>
-                    <span className="font-bold text-amber-900"><Money paise={foundCustomer.outstanding_paise} /></span>
+                  <div className="flex items-center justify-between text-xs bg-warning-bg border border-warning/40 rounded-lg px-2.5 py-1.5">
+                    <span className="font-medium text-warning">Outstanding Balance</span>
+                    <span className="font-bold text-warning"><Money paise={foundCustomer.outstanding_paise} /></span>
                   </div>
                 )}
               </div>
@@ -999,7 +1212,7 @@ export default function CheckoutPage() {
 
             {customerStatus === "new" && (
               <div className="space-y-1.5">
-                <div className="flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded-lg px-2.5 py-1.5">
+                <div className="flex items-center gap-1.5 text-xs text-info bg-info-bg border border-info/40 rounded-lg px-2.5 py-1.5">
                   <UserPlus className="h-3.5 w-3.5 shrink-0" />
                   {t("checkout.newCustomerNotice")}
                 </div>
@@ -1075,12 +1288,12 @@ export default function CheckoutPage() {
 
           {/* Serial capture for selected item */}
           {selectedIdx !== null && cartItems[selectedIdx] && (
-            <div className="px-4 py-3 border-b bg-blue-50/50 space-y-3">
+            <div className="px-4 py-3 border-b bg-info-bg/50 space-y-3">
               <div>
-                <h3 className="text-xs font-semibold text-blue-900 mb-2">
+                <h3 className="text-xs font-semibold text-info mb-2">
                   Serial Numbers — {cartItems[selectedIdx].product_name}
                 </h3>
-                <p className="text-[10px] text-blue-700 mb-2.5">Optional — add serials for warranty tracking</p>
+                <p className="text-[10px] text-info mb-2.5">Optional — add serials for warranty tracking</p>
 
                 {/* Serial input form */}
                 <div className="space-y-2">
@@ -1103,7 +1316,7 @@ export default function CheckoutPage() {
                       value={warrantyMonthsInput}
                       onChange={(e) => setWarrantyMonthsInput(e.target.value)}
                       placeholder="Warranty (months)"
-                      className="text-xs h-8 px-2 border rounded w-24 font-mono focus:outline-none focus:ring-2 focus:ring-blue-200"
+                      className="text-xs h-8 px-2 border rounded w-24 font-mono focus:outline-none focus:ring-2 focus:ring-info/40"
                     />
                   </div>
                   <Button
@@ -1121,16 +1334,16 @@ export default function CheckoutPage() {
                 {cartItems[selectedIdx].serials && cartItems[selectedIdx].serials!.length > 0 && (
                   <div className="mt-2.5 space-y-1.5">
                     {cartItems[selectedIdx].serials!.map((s, sidx) => (
-                      <div key={sidx} className="flex items-center justify-between gap-2 bg-white border border-blue-200 rounded px-2 py-1 text-[10px]">
+                      <div key={sidx} className="flex items-center justify-between gap-2 bg-white border border-info/40 rounded px-2 py-1 text-[10px]">
                         <div className="min-w-0 flex-1">
-                          <p className="font-mono font-semibold truncate text-blue-900">{s.serial}</p>
+                          <p className="font-mono font-semibold truncate text-info">{s.serial}</p>
                           {s.warranty_months && (
-                            <p className="text-blue-600">{s.warranty_months} months warranty</p>
+                            <p className="text-info">{s.warranty_months} months warranty</p>
                           )}
                         </div>
                         <button
                           onClick={() => removeSerialFromItem(selectedIdx, sidx)}
-                          className="text-blue-400 hover:text-red-600 transition-colors shrink-0 p-0.5"
+                          className="text-info hover:text-destructive transition-colors shrink-0 p-0.5"
                         >
                           <X className="h-3 w-3" />
                         </button>
@@ -1187,7 +1400,7 @@ export default function CheckoutPage() {
                             </p>
                             <p className={`text-[10px] mt-0.5 ${
                               product.stock_qty <= (product.low_stock_threshold ?? 5)
-                                ? "text-amber-600 font-medium"
+                                ? "text-warning font-medium"
                                 : "text-muted-foreground"
                             }`}>
                               {product.stock_qty} {product.unit}
@@ -1270,12 +1483,36 @@ export default function CheckoutPage() {
         </div>
       )}
 
+      {/* Where this cart came from, and what it could not bring with it. */}
+      {fromQuotation && (
+        <div className="fixed bottom-4 start-1/2 z-40 w-[min(30rem,92vw)] -translate-x-1/2 rounded-lg border border-info/40 bg-info-bg px-4 py-2.5 text-sm text-info shadow-lg">
+          <div className="flex items-start gap-2">
+            <FileText className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="font-medium">From quotation {fromQuotation.number}</p>
+              {fromQuotation.offCatalogue > 0 && (
+                <p className="text-xs">
+                  {fromQuotation.offCatalogue} line
+                  {fromQuotation.offCatalogue !== 1 ? "s were" : " was"} not a stock
+                  item and could not be brought across — add
+                  {fromQuotation.offCatalogue !== 1 ? " them" : " it"} here by hand.
+                </p>
+              )}
+            </div>
+            <button onClick={() => setFromQuotation(null)} aria-label="Dismiss">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Payment modal */}
       {showPayment && (
         <PaymentModal
           cartItems={cartItems}
           discountPaise={billDiscountPaise}
           taxPaise={taxPaise}
+          installationPaise={installationPaise}
           totalPaise={totalPaise}
           onConfirm={handlePaymentConfirm}
           onCancel={() => setShowPayment(false)}

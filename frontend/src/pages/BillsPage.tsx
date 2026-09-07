@@ -21,6 +21,7 @@ import ShareReceiptButton from "@/components/ShareReceiptButton";
 import { useAuthStore } from "@/store/authStore";
 import { useToast } from "@/lib/use-toast";
 import type { Sale } from "@/types/sales";
+import { useTranslation } from "@/lib/useTranslation";
 
 function formatDt(iso: string) {
   return new Date(iso).toLocaleString("en-PK", {
@@ -41,6 +42,7 @@ function SaleDetailModal({
   onClose: () => void;
   canVoid: boolean;
 }) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const { toast } = useToast();
   const [template, setTemplate] = useState<ReceiptTemplate>("thermal");
@@ -123,10 +125,10 @@ function SaleDetailModal({
               <table className="w-full text-sm">
                 <thead className="bg-muted/40">
                   <tr>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Product</th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Qty</th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Rate</th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Total</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">{t("common.product")}</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">{t("common.qty")}</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">{t("common.rate")}</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">{t("common.total")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -144,12 +146,12 @@ function SaleDetailModal({
                           </div>
                         </div>
                         {item.serials && item.serials.length > 0 && (
-                          <div className="mt-2 space-y-1 bg-blue-50 rounded border border-blue-200 p-2">
+                          <div className="mt-2 space-y-1 bg-info-bg rounded border border-info/40 p-2">
                             {item.serials.map((serial, sidx) => (
                               <div key={sidx} className="text-[10px]">
-                                <p className="font-mono font-semibold text-blue-900">{serial.serial}</p>
+                                <p className="font-mono font-semibold text-info">{serial.serial}</p>
                                 {serial.warranty_months && (
-                                  <p className="text-blue-600">Warranty: {serial.warranty_months} months</p>
+                                  <p className="text-info">Warranty: {serial.warranty_months} months</p>
                                 )}
                               </div>
                             ))}
@@ -160,7 +162,7 @@ function SaleDetailModal({
                           <span className="text-xs font-mono font-semibold">
                             <Money paise={item.subtotal_paise} />
                             {item.discount_paise > 0 && (
-                              <p className="text-[10px] text-amber-600 font-normal">
+                              <p className="text-[10px] text-warning font-normal">
                                 −<Money paise={item.discount_paise} /> disc
                               </p>
                             )}
@@ -181,25 +183,55 @@ function SaleDetailModal({
               <span className="font-mono"><Money paise={sale.subtotal_paise} /></span>
             </div>
             {sale.discount_paise > 0 && (
-              <div className="flex justify-between text-amber-600">
+              <div className="flex justify-between text-warning">
                 <span>Discount</span>
                 <span className="font-mono">− <Money paise={sale.discount_paise} /></span>
               </div>
             )}
-            <div className="flex justify-between font-bold text-base border-t pt-2">
-              <span>Total</span>
+            <div className={`flex justify-between border-t pt-2 ${
+              sale.installation_paise > 0 ? "text-sm" : "font-bold text-base"
+            }`}>
+              <span>{sale.installation_paise > 0 ? "Goods total" : "Total"}</span>
               <span className="font-mono"><Money paise={sale.total_paise} /></span>
             </div>
-            {sale.payment && (
-              <div className="border-t pt-2 space-y-1.5">
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Paid ({sale.payment.method.toUpperCase()})</span>
-                  <span className="font-mono"><Money paise={sale.payment.amount_tendered_paise} /></span>
+            {sale.installation_paise > 0 && (
+              <>
+                <div className="flex justify-between text-sm text-info">
+                  <span>
+                    Installation
+                    {sale.installation_note ? ` — ${sale.installation_note}` : ""}
+                  </span>
+                  <span className="font-mono"><Money paise={sale.installation_paise} /></span>
                 </div>
-                {sale.payment.change_paise > 0 && (
+                <div className="flex justify-between font-bold text-base">
+                  <span>Amount due</span>
+                  <span className="font-mono"><Money paise={sale.amount_due_paise} /></span>
+                </div>
+              </>
+            )}
+            {/* A bill can be settled by several tenders — show each of them,
+                and call out anything that went on khata. */}
+            {sale.payments && sale.payments.length > 0 && (
+              <div className="border-t pt-2 space-y-1.5">
+                {sale.payments.map((p) => (
+                  <div
+                    key={p.id ?? p.method}
+                    className={`flex justify-between ${
+                      p.method === "credit" ? "font-medium text-warning" : "text-muted-foreground"
+                    }`}
+                  >
+                    <span>
+                      {p.method === "credit"
+                        ? "On khata"
+                        : `Paid (${p.method.replace("_", " ").toUpperCase()})`}
+                    </span>
+                    <span className="font-mono"><Money paise={p.amount_paise} /></span>
+                  </div>
+                ))}
+                {(sale.payment?.change_paise ?? 0) > 0 && (
                   <div className="flex justify-between text-teal-600 font-medium">
                     <span>Change</span>
-                    <span className="font-mono"><Money paise={sale.payment.change_paise} /></span>
+                    <span className="font-mono"><Money paise={sale.payment!.change_paise} /></span>
                   </div>
                 )}
               </div>
@@ -268,6 +300,7 @@ function SaleDetailModal({
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function BillsPage() {
+  const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const canVoid = user?.role === "owner" || user?.role === "manager";
 
@@ -304,8 +337,8 @@ export default function BillsPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Bills & Sales History"
-        subtitle="Search, filter, and review all past transactions"
+        title={t("bills.title")}
+        subtitle={t("bills.subtitle")}
       />
 
       <div className="space-y-4">
@@ -412,13 +445,13 @@ export default function BillsPage() {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 border-b">
                 <tr>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Bill #</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Date &amp; Time</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Customer</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Items</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total</th>
-                  <th className="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pay</th>
-                  <th className="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.billNumber")}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("bills.colDateTime")}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.customer")}</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.items")}</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.total")}</th>
+                  <th className="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("bills.colPay")}</th>
+                  <th className="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.status")}</th>
                   <th className="w-10" />
                 </tr>
               </thead>
@@ -454,13 +487,13 @@ export default function BillsPage() {
             <table className="w-full text-sm">
               <thead className="bg-muted/40 border-b">
                 <tr>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Bill #</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Date &amp; Time</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Customer</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Items</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total</th>
-                  <th className="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pay</th>
-                  <th className="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.billNumber")}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("bills.colDateTime")}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.customer")}</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.items")}</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.total")}</th>
+                  <th className="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("bills.colPay")}</th>
+                  <th className="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.status")}</th>
                   <th className="w-10" />
                 </tr>
               </thead>
@@ -499,14 +532,16 @@ export default function BillsPage() {
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded uppercase font-mono">
-                        {sale.payment?.method ?? "—"}
+                        {sale.payments?.length
+                          ? sale.payments.map((p) => p.method).join(" + ")
+                          : "—"}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
                       {sale.status === "completed" ? (
                         <CheckCircle2 className="h-4 w-4 text-teal-500 mx-auto" />
                       ) : (
-                        <XCircle className="h-4 w-4 text-red-400 mx-auto" />
+                        <XCircle className="h-4 w-4 text-destructive mx-auto" />
                       )}
                     </td>
                     <td className="pr-3 text-center">

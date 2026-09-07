@@ -46,7 +46,9 @@ export function OfflineBanner() {
       clearTimeout(timeoutId);
       apiClient.interceptors.response.eject(errorInterceptor);
     };
-  }, []);
+    // isDev is read from the build environment and cannot change at runtime,
+    // but listing it costs nothing and keeps the lint honest.
+  }, [isDev]);
 
   const handleRetry = async () => {
     setIsRetrying(true);

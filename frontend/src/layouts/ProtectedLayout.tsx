@@ -3,6 +3,8 @@ import { useAuthStore } from "@/store/authStore";
 import { AppSidebar } from "./components/AppSidebar";
 import { AppTopbar } from "./components/AppTopbar";
 import { CommandPalette } from "@/components/command-palette";
+import { ForcePasswordChange } from "@/components/ForcePasswordChange";
+import { RequireRole } from "@/components/RequireRole";
 import { KeyboardShortcuts } from "@/components/keyboard-shortcuts";
 
 export default function ProtectedLayout() {
@@ -20,12 +22,15 @@ export default function ProtectedLayout() {
         <div className="flex flex-1 flex-col min-w-0">
           <AppTopbar />
           <main className="flex-1 overflow-y-auto">
-            <Outlet />
+            <RequireRole>
+              <Outlet />
+            </RequireRole>
           </main>
         </div>
       </div>
       <CommandPalette />
       <KeyboardShortcuts />
+      <ForcePasswordChange />
     </>
   );
 }

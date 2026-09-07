@@ -8,7 +8,12 @@ from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.parsers import MultiPartParser
 from rest_framework.response import Response
 
+from apps.accounts.activity import log_activity
+from apps.accounts.permissions import IsOwnerOrManager, IsOwnerOrManagerOrReadOnly
+
 from .filters import ProductFilter
+from apps.sales.models import SaleItem
+
 from .models import Category, Inventory, Product, StockMovement
 from .resources import ProductResource
 from .serializers import (
@@ -22,6 +27,9 @@ from .services import apply_stock_movement
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
+    # Anyone at the till may read the catalogue; only an owner or manager
+    # may change a price, add stock, or archive a product.
+    permission_classes = [IsOwnerOrManagerOrReadOnly]
     queryset = Category.objects.filter(is_active=True).order_by("name")
     serializer_class = CategorySerializer
     filter_backends = [SearchFilter, OrderingFilter]
@@ -30,6 +38,9 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
 
 class ProductViewSet(viewsets.ModelViewSet):
+    # Anyone at the till may read the catalogue; only an owner or manager
+    # may change a price, add stock, or archive a product.
+    permission_classes = [IsOwnerOrManagerOrReadOnly]
     queryset = (
         Product.objects.select_related("category", "inventory")
         .filter(is_active=True)
@@ -42,11 +53,103 @@ class ProductViewSet(viewsets.ModelViewSet):
     ordering_fields = ["name", "sku", "sell_price_paise", "created_at"]
 
     def get_queryset(self):
-        # Allow ?include_inactive=true for admin use
         qs = Product.objects.select_related("category", "inventory").order_by("name")
+        # The list hides archived products — they are meant to be out of the way
+        # of the till. Anything addressing one product by id must still find it,
+        # or restoring an archived product would 404 on the way in.
+        if self.action != "list":
+            return qs
         if self.request.query_params.get("include_inactive") != "true":
             qs = qs.filter(is_active=True)
         return qs
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        Archive by default; delete only what has no history.
+
+        A product that has ever been sold is referenced by every bill it
+        appeared on. Deleting the row would corrupt those bills — and a shop
+        that has to produce a two-year-old invoice for a warranty claim needs
+        them intact. So the normal answer to "remove this product" is to
+        archive it: it leaves the till and the search, and stays on the record.
+
+        A genuinely untouched product — a typo entered five minutes ago — has
+        nothing to protect and is deleted properly.
+        """
+        product = self.get_object()
+
+        has_sales = SaleItem.objects.filter(product=product).exists()
+        has_movements = StockMovement.objects.filter(product=product).exists()
+        stock = getattr(getattr(product, "inventory", None), "stock_qty", 0) or 0
+
+        if has_sales or has_movements or stock:
+            if not product.is_active:
+                return Response(
+                    {"detail": f"{product.name} is already archived."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            product.is_active = False
+            product.save(update_fields=["is_active", "updated_at"])
+            log_activity(
+                "product_archived", user=request.user,
+                details={"sku": product.sku, "name": product.name}, request=request,
+            )
+            return Response(
+                {
+                    "archived": True,
+                    "detail": (
+                        f"{product.name} has been archived. It has been sold or "
+                        f"stocked before, so it stays on old bills and reports and "
+                        f"can be restored at any time."
+                    ),
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        name, sku = product.name, product.sku
+        product.delete()
+        log_activity(
+            "product_deleted", user=request.user,
+            details={"sku": sku, "name": name}, request=request,
+        )
+        return Response(
+            {"archived": False, "detail": f"{name} was deleted — it had no history."},
+            status=status.HTTP_200_OK,
+        )
+
+    @extend_schema(summary="Restore an archived product")
+    @action(detail=True, methods=["post"], url_path="restore")
+    def restore(self, request, pk=None):
+        product = self.get_object()
+        if product.is_active:
+            return Response({"detail": "That product is not archived."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        product.is_active = True
+        product.save(update_fields=["is_active", "updated_at"])
+        return Response(ProductSerializer(product, context={"request": request}).data)
+
+    @extend_schema(
+        summary="Whether this product can be deleted outright, or only archived",
+        description="Lets the interface offer the right verb before anyone commits to it.",
+    )
+    @action(detail=True, methods=["get"], url_path="removal-check")
+    def removal_check(self, request, pk=None):
+        product = self.get_object()
+        sales = SaleItem.objects.filter(product=product).count()
+        movements = StockMovement.objects.filter(product=product).count()
+        stock = getattr(getattr(product, "inventory", None), "stock_qty", 0) or 0
+        blockers = []
+        if sales:
+            blockers.append(f"sold on {sales} bill{'s' if sales != 1 else ''}")
+        if movements:
+            blockers.append(f"{movements} stock movement{'s' if movements != 1 else ''}")
+        if stock:
+            blockers.append(f"{stock} in stock")
+        return Response({
+            "can_delete": not blockers,
+            "reasons": blockers,
+            "is_active": product.is_active,
+        })
 
     @extend_schema(
         summary="Bulk import products from CSV",
@@ -116,7 +219,9 @@ class ProductViewSet(viewsets.ModelViewSet):
     @extend_schema(summary="Look up an active product by barcode (used by checkout scanner)")
     @action(detail=False, methods=["get"], url_path=r"barcode/(?P<barcode>[^/.]+)")
     def by_barcode(self, request, barcode=None):
-        qs = self.get_queryset()
+        # Scanning at the till must never surface an archived product — that is
+        # the whole point of archiving one.
+        qs = self.get_queryset().filter(is_active=True)
         try:
             product = qs.get(barcode=barcode.strip())
         except Product.DoesNotExist:
@@ -152,6 +257,7 @@ class InventoryViewSet(
     mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,
 ):
+    permission_classes = [IsOwnerOrManagerOrReadOnly]
     queryset = Inventory.objects.select_related("product", "product__category").order_by(
         "product__name"
     )
@@ -165,7 +271,10 @@ class InventoryViewSet(
         request=StockInSerializer,
         responses={201: StockMovementSerializer},
     )
-    @action(detail=False, methods=["post"], url_path="stock-in")
+    @action(
+        detail=False, methods=["post"], url_path="stock-in",
+        permission_classes=[IsOwnerOrManager],
+    )
     def stock_in(self, request):
         serializer = StockInSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -180,6 +289,19 @@ class InventoryViewSet(
             notes=d.get("notes", ""),
             created_by=request.user,
         )
+        # Stock appearing from nowhere is where shrinkage hides, so record who
+        # did it and why. Action.STOCK_IN was defined and never written until now.
+        log_activity(
+            "stock_in",
+            user=request.user,
+            details={
+                "product": d["product"].sku,
+                "qty": str(d["qty"]),
+                "reference": d.get("reference", ""),
+                "notes": d.get("notes", ""),
+            },
+            request=request,
+        )
         return Response(StockMovementSerializer(movement).data, status=status.HTTP_201_CREATED)
 
 
@@ -188,6 +310,7 @@ class StockMovementViewSet(
     mixins.RetrieveModelMixin,
     viewsets.GenericViewSet,
 ):
+    permission_classes = [IsOwnerOrManagerOrReadOnly]
     queryset = StockMovement.objects.select_related("product", "created_by").order_by("-created_at")
     serializer_class = StockMovementSerializer
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]

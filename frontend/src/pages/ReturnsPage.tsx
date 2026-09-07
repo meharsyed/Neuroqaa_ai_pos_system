@@ -15,6 +15,7 @@ import { Money } from "@/components/ui/money";
 import { salesApi } from "@/lib/sales";
 import { useToast } from "@/lib/use-toast";
 import type { Sale, SaleItemRecord } from "@/types/sales";
+import { useTranslation } from "@/lib/useTranslation";
 
 function formatDt(iso: string) {
   return new Date(iso).toLocaleString("en-PK", {
@@ -30,6 +31,7 @@ type ReturnQtys = Record<number, string>; // product_id → qty string
 type ReturnStage = "search" | "select" | "confirm";
 
 export default function ReturnsPage() {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const [searchInput, setSearchInput]   = useState("");
   const [saleQuery, setSaleQuery]       = useState("");
@@ -93,19 +95,19 @@ export default function ReturnsPage() {
 
   if (completedReturn) {
     return (
-      <div className="min-h-full flex flex-col items-center justify-center p-8 bg-gradient-to-b from-background to-blue-50/20">
+      <div className="min-h-full flex flex-col items-center justify-center p-8 bg-gradient-to-b from-background to-info-bg/20">
         <div className="text-center space-y-5 max-w-sm w-full animate-fade-in-scale">
-          <div className="w-20 h-20 rounded-full bg-blue-100 flex items-center justify-center mx-auto shadow-lg shadow-blue-200">
-            <CheckCircle2 className="h-10 w-10 text-blue-600" />
+          <div className="w-20 h-20 rounded-full bg-info-bg flex items-center justify-center mx-auto shadow-lg">
+            <CheckCircle2 className="h-10 w-10 text-info" />
           </div>
           <div>
-            <h2 className="text-2xl font-bold text-blue-700">Return Processed</h2>
+            <h2 className="text-2xl font-bold text-info">Return Processed</h2>
             <p className="text-sm text-muted-foreground font-mono mt-1">{completedReturn.sale_number}</p>
           </div>
           <div className="bg-white rounded-xl border shadow-sm p-4 space-y-2 text-sm text-left">
             <div className="flex justify-between items-center">
               <span className="text-muted-foreground">Return amount</span>
-              <span className="font-bold text-xl tabular-nums text-blue-700">
+              <span className="font-bold text-xl tabular-nums text-info">
                 <Money paise={Math.abs(completedReturn.total_paise)} />
               </span>
             </div>
@@ -117,7 +119,7 @@ export default function ReturnsPage() {
               <span>Items returned</span>
               <span>{completedReturn.items.length}</span>
             </div>
-            <p className="text-xs text-blue-600 bg-blue-50 border border-blue-200 rounded px-2 py-1.5 mt-2">
+            <p className="text-xs text-info bg-info-bg border border-info/40 rounded px-2 py-1.5 mt-2">
               Stock has been restored automatically for all returned items.
             </p>
           </div>
@@ -137,8 +139,8 @@ export default function ReturnsPage() {
   return (
     <PageContainer>
       <PageHeader
-        title="Returns / Wapsi Saman"
-        subtitle="Process item returns by searching the original bill number"
+        title={t("returns.title")}
+        subtitle={t("returns.subtitle")}
       />
 
       {/* Stepper UI */}
@@ -327,7 +329,7 @@ export default function ReturnsPage() {
                   name="notes"
                   value={notes}
                   onChange={setNotes}
-                  placeholder="e.g. Damaged tiles, wrong size, customer complaint..."
+                  placeholder={t("returns.reasonPlaceholder")}
                   hint="Optional - for your records"
                 />
 
