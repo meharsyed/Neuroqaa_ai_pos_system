@@ -2,21 +2,25 @@ import { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { catalogApi, rupeesToPaise } from "@/lib/catalog";
 import { useToast } from "@/lib/use-toast";
-import type { Product } from "@/types/catalog";
+import type { Product, Supplier } from "@/types/catalog";
 
 const schema = z.object({
   qty: z.string().refine((v) => parseFloat(v) > 0, "Quantity must be greater than 0"),
   cost_price: z.string().optional(),
+  // Empty string means "not picked" — kept optional so nobody who ignores it
+  // is affected.
+  supplier: z.string().optional().default(""),
   reference: z.string().optional().default(""),
   notes: z.string().optional().default(""),
 });
@@ -33,9 +37,17 @@ export function StockInModal({ open, onOpenChange, product }: Props) {
   const qc = useQueryClient();
   const { toast } = useToast();
 
+  const { data: suppliers = [] } = useQuery({
+    queryKey: ["suppliers", { forStockIn: true }],
+    queryFn: () => catalogApi.suppliers.list(),
+    select: (data) => data.results,
+    enabled: open,
+    staleTime: 60_000,
+  });
+
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
-    defaultValues: { qty: "", cost_price: "", reference: "", notes: "" },
+    defaultValues: { qty: "", cost_price: "", supplier: "", reference: "", notes: "" },
   });
 
   // Auto-generate a date-based reference each time the modal opens (e.g. RCPT-20260603)
@@ -43,7 +55,7 @@ export function StockInModal({ open, onOpenChange, product }: Props) {
     if (open) {
       const d = new Date();
       const ref = `RCPT-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
-      reset({ qty: "", cost_price: "", reference: ref, notes: "" });
+      reset({ qty: "", cost_price: "", supplier: "", reference: ref, notes: "" });
     }
   }, [open, reset]);
 
@@ -54,6 +66,7 @@ export function StockInModal({ open, onOpenChange, product }: Props) {
         product: product.id,
         qty: values.qty,
         cost_price_paise: values.cost_price ? rupeesToPaise(values.cost_price) : undefined,
+        supplier: values.supplier ? Number(values.supplier) : undefined,
         reference: values.reference || "",
         notes: values.notes || "",
       });
@@ -119,10 +132,22 @@ export function StockInModal({ open, onOpenChange, product }: Props) {
           </div>
 
           <div className="space-y-1">
+            <Label htmlFor="supplier">
+              Supplier <span className="text-muted-foreground text-xs">optional</span>
+            </Label>
+            <Select
+              id="supplier"
+              options={suppliers.map((s: Supplier) => ({ value: s.id, label: s.name }))}
+              placeholder="— Select supplier —"
+              {...register("supplier")}
+            />
+          </div>
+
+          <div className="space-y-1">
             <Label htmlFor="reference">
               Reference <span className="text-muted-foreground text-xs">e.g. PO-001</span>
             </Label>
-            <Input id="reference" placeholder="Purchase order / supplier ref" {...register("reference")} />
+            <Input id="reference" placeholder="Purchase order number" {...register("reference")} />
           </div>
 
           <div className="space-y-1">

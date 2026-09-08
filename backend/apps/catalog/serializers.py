@@ -4,7 +4,7 @@ from rest_framework import serializers
 
 from apps.accounts.permissions import can_see_cost_prices
 
-from .models import Category, Inventory, Product, StockMovement
+from .models import Category, Inventory, Product, StockMovement, Supplier
 from .money import Money
 
 
@@ -13,6 +13,24 @@ class CategorySerializer(serializers.ModelSerializer):
         model = Category
         fields = ["id", "name", "slug", "description", "is_active"]
         read_only_fields = ["id"]
+
+
+class SupplierSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Supplier
+        fields = [
+            "id",
+            "name",
+            "contact_person",
+            "phone",
+            "email",
+            "address",
+            "notes",
+            "is_active",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at"]
 
 
 class ProductSerializer(serializers.ModelSerializer):
@@ -122,6 +140,7 @@ class InventorySerializer(serializers.ModelSerializer):
 class StockMovementSerializer(serializers.ModelSerializer):
     product_sku = serializers.CharField(source="product.sku", read_only=True)
     product_name = serializers.CharField(source="product.name", read_only=True)
+    supplier_name = serializers.CharField(source="supplier.name", read_only=True, default=None)
     created_by_name = serializers.SerializerMethodField()
 
     class Meta:
@@ -131,6 +150,8 @@ class StockMovementSerializer(serializers.ModelSerializer):
             "product",
             "product_sku",
             "product_name",
+            "supplier",
+            "supplier_name",
             "movement_type",
             "qty_change",
             "qty_after",
@@ -155,5 +176,11 @@ class StockInSerializer(serializers.Serializer):
     product = serializers.PrimaryKeyRelatedField(queryset=Product.objects.filter(is_active=True))
     qty = serializers.DecimalField(max_digits=10, decimal_places=3, min_value=Decimal("0.001"))
     cost_price_paise = serializers.IntegerField(min_value=0, required=False, allow_null=True)
+    # Optional — who this batch was bought from. Ignoring it keeps working
+    # exactly as before; the field only ever gets attached to a STOCK_IN
+    # movement (see services.apply_stock_movement).
+    supplier = serializers.PrimaryKeyRelatedField(
+        queryset=Supplier.objects.filter(is_active=True), required=False, allow_null=True
+    )
     reference = serializers.CharField(max_length=200, required=False, default="", allow_blank=True)
     notes = serializers.CharField(required=False, default="", allow_blank=True)

@@ -131,6 +131,33 @@ class Inventory(models.Model):
         )
 
 
+class Supplier(models.Model):
+    """
+    A vendor/seller a shop restocks from.
+
+    Deliberately plain — see the design note on StockMovement.supplier below
+    for why this doesn't carry a running balance or per-product pricing of
+    its own; that history lives on the movements, not here.
+    """
+
+    tenant_id = models.IntegerField(default=1, db_index=True)
+    name = models.CharField(max_length=200)
+    contact_person = models.CharField(max_length=200, blank=True)
+    phone = models.CharField(max_length=20, blank=True)
+    email = models.EmailField(blank=True)
+    address = models.TextField(blank=True)
+    notes = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self) -> str:
+        return self.name
+
+
 class StockMovement(models.Model):
     """
     Append-only ledger of every inventory change.
@@ -147,6 +174,13 @@ class StockMovement(models.Model):
 
     tenant_id = models.IntegerField(default=1, db_index=True)
     product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name="movements")
+    # Only ever set for STOCK_IN movements — who a batch of stock was bought
+    # from. PROTECT so a supplier with purchase history can't be deleted out
+    # from under it (deactivate via is_active instead, same convention as
+    # archiving a Product).
+    supplier = models.ForeignKey(
+        "Supplier", on_delete=models.PROTECT, null=True, blank=True, related_name="stock_movements"
+    )
     movement_type = models.CharField(max_length=20, choices=MovementType.choices)
     qty_change = models.DecimalField(max_digits=10, decimal_places=3)
     qty_after = models.DecimalField(max_digits=10, decimal_places=3)

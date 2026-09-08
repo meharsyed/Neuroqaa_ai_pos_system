@@ -27,6 +27,8 @@ export const isOwner = (user: User | null | undefined) => role(user) === "owner"
 export const can = {
   /** Change prices, add stock, archive a product. */
   editCatalogue: isManagement,
+  /** Add/edit suppliers, view supplier purchase history. Same bar as the catalogue. */
+  manageSuppliers: isManagement,
   /** See cost price and margin. The server strips these fields anyway. */
   seeCostPrices: isManagement,
   /** Void a completed sale. */
@@ -50,6 +52,7 @@ export const ROUTE_ACCESS: Record<string, (u: User | null | undefined) => boolea
   "/activity": can.viewActivityLog,
   "/settings": can.editSettings,
   "/users": can.manageUsers,
+  "/suppliers": can.manageSuppliers,
 };
 
 export function mayOpen(path: string, user: User | null | undefined): boolean {

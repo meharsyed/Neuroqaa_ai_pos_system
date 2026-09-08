@@ -8,12 +8,52 @@ import type {
   ProductFormValues,
   StockInFormValues,
   StockMovement,
+  Supplier,
 } from "../types/catalog";
 
 export const catalogApi = {
   categories: {
     list: () =>
       apiClient.get<PaginatedResponse<Category>>("/categories/").then((r) => r.data.results),
+  },
+
+  suppliers: {
+    list: (params?: { search?: string; include_inactive?: boolean; page?: number }) =>
+      apiClient.get<PaginatedResponse<Supplier>>("/suppliers/", { params }).then((r) => r.data),
+
+    get: (id: number) =>
+      apiClient.get<Supplier>(`/suppliers/${id}/`).then((r) => r.data),
+
+    create: (data: Partial<Omit<Supplier, "id" | "is_active" | "created_at" | "updated_at">>) =>
+      apiClient.post<Supplier>("/suppliers/", data).then((r) => r.data),
+
+    update: (id: number, data: Partial<Omit<Supplier, "id" | "created_at" | "updated_at">>) =>
+      apiClient.patch<Supplier>(`/suppliers/${id}/`, data).then((r) => r.data),
+
+    /**
+     * Deactivates a supplier with purchase history under it (archived is: true
+     * in the response), or deletes outright a supplier that's never been used.
+     */
+    remove: (id: number) =>
+      apiClient
+        .delete<{ archived: boolean; detail: string }>(`/suppliers/${id}/`)
+        .then((r) => r.data),
+
+    restore: (id: number) =>
+      apiClient.post<Supplier>(`/suppliers/${id}/restore/`).then((r) => r.data),
+
+    /**
+     * A supplier's purchase history — no dedicated endpoint. The append-only
+     * stock movements ledger already has everything (product, qty, cost,
+     * date); this just filters it down to what this supplier was stocked in
+     * against.
+     */
+    purchaseHistory: (supplierId: number, page = 1) =>
+      apiClient
+        .get<PaginatedResponse<StockMovement>>("/movements/", {
+          params: { supplier: supplierId, movement_type: "stock_in", page },
+        })
+        .then((r) => r.data),
   },
 
   products: {

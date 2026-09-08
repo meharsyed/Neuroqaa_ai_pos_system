@@ -2,7 +2,7 @@ from decimal import Decimal
 
 from django.db import transaction
 
-from .models import Inventory, Product, StockMovement
+from .models import Inventory, Product, StockMovement, Supplier
 
 
 def apply_stock_movement(
@@ -11,6 +11,7 @@ def apply_stock_movement(
     movement_type: str,
     qty_change: Decimal,
     cost_price_paise: int | None = None,
+    supplier: "Supplier | None" = None,
     reference: str = "",
     notes: str = "",
     created_by=None,
@@ -41,6 +42,7 @@ def apply_stock_movement(
             qty_change=qty_change,
             qty_after=new_qty,
             cost_price_paise=cost_price_paise,
+            supplier=supplier,
             reference=reference,
             notes=notes,
             created_by=created_by,

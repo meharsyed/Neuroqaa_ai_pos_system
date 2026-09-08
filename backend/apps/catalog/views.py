@@ -14,7 +14,7 @@ from apps.accounts.permissions import IsOwnerOrManager, IsOwnerOrManagerOrReadOn
 from .filters import ProductFilter
 from apps.sales.models import SaleItem
 
-from .models import Category, Inventory, Product, StockMovement
+from .models import Category, Inventory, Product, StockMovement, Supplier
 from .resources import ProductResource
 from .serializers import (
     CategorySerializer,
@@ -22,6 +22,7 @@ from .serializers import (
     ProductSerializer,
     StockInSerializer,
     StockMovementSerializer,
+    SupplierSerializer,
 )
 from .services import apply_stock_movement
 
@@ -35,6 +36,80 @@ class CategoryViewSet(viewsets.ModelViewSet):
     filter_backends = [SearchFilter, OrderingFilter]
     search_fields = ["name"]
     ordering_fields = ["name", "created_at"]
+
+
+class SupplierViewSet(viewsets.ModelViewSet):
+    # Anyone signed in may read the supplier list (needed to pick one while
+    # stocking a product); only an owner or manager may add, edit, or
+    # deactivate a supplier — the same bar as editing the catalogue.
+    permission_classes = [IsOwnerOrManagerOrReadOnly]
+    queryset = Supplier.objects.order_by("name")
+    serializer_class = SupplierSerializer
+    filter_backends = [SearchFilter, OrderingFilter]
+    search_fields = ["name", "contact_person", "phone"]
+    ordering_fields = ["name", "created_at"]
+
+    def get_queryset(self):
+        qs = Supplier.objects.order_by("name")
+        # The list hides deactivated suppliers by default, same convention as
+        # archived products. Fetching one directly (edit, restore, purchase
+        # history) must still find it even after deactivation.
+        if self.action != "list":
+            return qs
+        if self.request.query_params.get("include_inactive") != "true":
+            qs = qs.filter(is_active=True)
+        return qs
+
+    def destroy(self, request, *args, **kwargs):
+        """
+        Deactivate by default; delete only a supplier with no purchase history.
+
+        StockMovement.supplier is PROTECT — a supplier with stock movements
+        under it can't be hard-deleted at the database level anyway. Without
+        this override that surfaces as a raw 500 the first time someone
+        clicks delete on a supplier that's actually been used, exactly like
+        Product.destroy() exists to prevent for products.
+        """
+        supplier = self.get_object()
+        has_movements = supplier.stock_movements.exists()
+
+        if has_movements:
+            if not supplier.is_active:
+                return Response(
+                    {"detail": f"{supplier.name} is already deactivated."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            supplier.is_active = False
+            supplier.save(update_fields=["is_active", "updated_at"])
+            return Response(
+                {
+                    "archived": True,
+                    "detail": (
+                        f"{supplier.name} has been deactivated. It has purchase "
+                        f"history, so it stays on past stock-in records and can "
+                        f"be reactivated at any time."
+                    ),
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        name = supplier.name
+        supplier.delete()
+        return Response(
+            {"archived": False, "detail": f"{name} was deleted — it had no purchase history."},
+            status=status.HTTP_200_OK,
+        )
+
+    @extend_schema(summary="Reactivate a deactivated supplier")
+    @action(detail=True, methods=["post"], url_path="restore")
+    def restore(self, request, pk=None):
+        supplier = self.get_object()
+        if supplier.is_active:
+            return Response({"detail": "That supplier is not deactivated."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        supplier.is_active = True
+        supplier.save(update_fields=["is_active", "updated_at"])
+        return Response(SupplierSerializer(supplier).data)
 
 
 class ProductViewSet(viewsets.ModelViewSet):
@@ -285,6 +360,7 @@ class InventoryViewSet(
             movement_type=StockMovement.MovementType.STOCK_IN,
             qty_change=d["qty"],
             cost_price_paise=d.get("cost_price_paise"),
+            supplier=d.get("supplier"),
             reference=d.get("reference", ""),
             notes=d.get("notes", ""),
             created_by=request.user,
@@ -297,6 +373,7 @@ class InventoryViewSet(
             details={
                 "product": d["product"].sku,
                 "qty": str(d["qty"]),
+                "supplier": (d.get("supplier").name if d.get("supplier") else ""),
                 "reference": d.get("reference", ""),
                 "notes": d.get("notes", ""),
             },
@@ -311,9 +388,13 @@ class StockMovementViewSet(
     viewsets.GenericViewSet,
 ):
     permission_classes = [IsOwnerOrManagerOrReadOnly]
-    queryset = StockMovement.objects.select_related("product", "created_by").order_by("-created_at")
+    queryset = StockMovement.objects.select_related(
+        "product", "supplier", "created_by"
+    ).order_by("-created_at")
     serializer_class = StockMovementSerializer
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
-    filterset_fields = ["product", "movement_type"]
+    # A supplier's purchase history is this same list, filtered:
+    # GET /api/movements/?supplier=<id>&movement_type=stock_in
+    filterset_fields = ["product", "supplier", "movement_type"]
     search_fields = ["product__sku", "product__name", "reference"]
     ordering_fields = ["created_at"]

@@ -8,6 +8,7 @@ import CheckoutPage from "@/pages/CheckoutPage";
 import BillsPage from "@/pages/BillsPage";
 import ShiftsPage from "@/pages/ShiftsPage";
 import CustomersPage from "@/pages/CustomersPage";
+import SuppliersPage from "@/pages/SuppliersPage";
 import KhataPage from "@/pages/KhataPage";
 import ReturnsPage from "@/pages/ReturnsPage";
 import ActivityPage from "@/pages/ActivityPage";
@@ -38,6 +39,7 @@ export const router = createBrowserRouter([
       { path: "/returns",   element: <ReturnsPage /> },
       { path: "/quotations", element: <QuotationsPage /> },
       { path: "/customers", element: <CustomersPage /> },
+      { path: "/suppliers", element: <SuppliersPage /> },
       { path: "/khata",     element: <KhataPage /> },
       { path: "/shifts",    element: <ShiftsPage /> },
       { path: "/activity",  element: <ActivityPage /> },

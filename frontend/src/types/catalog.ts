@@ -6,6 +6,19 @@ export interface Category {
   is_active: boolean;
 }
 
+export interface Supplier {
+  id: number;
+  name: string;
+  contact_person: string;
+  phone: string;
+  email: string;
+  address: string;
+  notes: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Product {
   id: number;
   name: string;
@@ -46,6 +59,8 @@ export interface StockMovement {
   product: number;
   product_sku: string;
   product_name: string;
+  supplier: number | null;
+  supplier_name: string | null;
   movement_type: string;
   qty_change: string;
   qty_after: string;
@@ -91,6 +106,7 @@ export interface StockInFormValues {
   product: number;
   qty: string;
   cost_price_paise?: number;
+  supplier?: number | null;
   reference?: string;
   notes?: string;
 }

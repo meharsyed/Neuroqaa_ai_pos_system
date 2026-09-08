@@ -5,7 +5,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 from import_export.admin import ImportExportModelAdmin
 
-from .models import Category, Inventory, Product, StockMovement
+from .models import Category, Inventory, Product, StockMovement, Supplier
 from .money import Money
 from .resources import ProductResource
 
@@ -109,6 +109,13 @@ class ProductAdmin(ImportExportModelAdmin):
         )
 
     display_margin.short_description = "Margin"
+
+
+@admin.register(Supplier)
+class SupplierAdmin(admin.ModelAdmin):
+    list_display = ["name", "contact_person", "phone", "is_active", "created_at"]
+    list_filter = ["is_active"]
+    search_fields = ["name", "contact_person", "phone", "email"]
 
 
 @admin.register(Inventory)

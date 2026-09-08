@@ -15,6 +15,7 @@ import {
   Wallet,
   UserCog,
   FileText,
+  Truck,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useTranslation } from "@/lib/useTranslation";
@@ -51,6 +52,7 @@ const NAV_SECTIONS: { labelKey: string; items: NavItem[] }[] = [
     labelKey: "nav.sectionManagement",
     items: [
       { to: "/customers", labelKey: "nav.customers", icon: Users },
+      { to: "/suppliers", labelKey: "nav.suppliers", icon: Truck, allow: can.manageSuppliers },
       { to: "/khata", labelKey: "nav.khata", icon: Wallet },
       { to: "/audit", labelKey: "nav.audit", icon: FileBarChart, allow: can.viewReports },
       { to: "/shifts", labelKey: "nav.shifts", icon: Clock },
