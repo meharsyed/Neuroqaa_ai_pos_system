@@ -10,9 +10,22 @@ nothing else is reachable from it.
 from django.http import HttpResponse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.clickjacking import xframe_options_exempt
-from django.views.decorators.http import require_GET
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.throttling import ScopedRateThrottle
 
 from .sharing import resolve_receipt_token, sharing_enabled
+
+
+class PublicReceiptThrottle(ScopedRateThrottle):
+    """
+    This page has no login to throttle by user, and no reason a real customer
+    ever needs more than a handful of loads — so it is capped hard, by IP,
+    independent of the anon/user rates everything else shares.
+    """
+
+    scope = "public_receipt"
+
 
 _GONE_PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -33,7 +46,9 @@ _GONE_PAGE = """<!doctype html>
 </div></body></html>"""
 
 
-@require_GET
+@api_view(["GET"])
+@permission_classes([AllowAny])
+@throttle_classes([PublicReceiptThrottle])
 @never_cache
 @xframe_options_exempt
 def public_receipt(request, token: str):

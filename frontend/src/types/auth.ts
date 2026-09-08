@@ -38,11 +38,8 @@ export interface LoginCredentials {
   password: string;
 }
 
-export interface AuthTokens {
+export interface LoginResponse {
+  /** The refresh token never appears here — it comes back as an httpOnly cookie. */
   access: string;
-  refresh: string;
-}
-
-export interface LoginResponse extends AuthTokens {
   user: User;
 }

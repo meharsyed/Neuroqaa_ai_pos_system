@@ -30,7 +30,8 @@ class TestLoginEndpoint:
         resp = api_client.post(url, {"email": user.email, "password": "StrongPass123!"})
         assert resp.status_code == status.HTTP_200_OK
         assert "access" in resp.data
-        assert "refresh" in resp.data
+        assert "refresh" not in resp.data  # refresh is now in httpOnly cookie
+        assert "refresh_token" in resp.cookies  # verify cookie is set
         assert resp.data["user"]["email"] == user.email
         assert resp.data["user"]["role"] == "owner"
 
@@ -60,6 +61,7 @@ class TestMeEndpoint:
         login = api_client.post(
             reverse("auth-login"), {"email": user.email, "password": "StrongPass123!"}
         )
-        resp = api_client.post(reverse("auth-refresh"), {"refresh": login.data["refresh"]})
+        # APIClient maintains cookies from login response for next request
+        resp = api_client.post(reverse("auth-refresh"), {})
         assert resp.status_code == status.HTTP_200_OK
         assert "access" in resp.data

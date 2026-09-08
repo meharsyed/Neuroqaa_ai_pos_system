@@ -10,6 +10,10 @@ const API_BASE = import.meta.env.VITE_API_URL ?? "/api";
 export const apiClient = axios.create({
   baseURL: API_BASE,
   headers: { "Content-Type": "application/json" },
+  // The refresh-token cookie is httpOnly and scoped to /api/auth/ — this is
+  // what lets the browser attach and accept it at all across an origin split
+  // (e.g. the Vite dev server calling the Django API on another port).
+  withCredentials: true,
 });
 
 apiClient.interceptors.request.use((config: InternalAxiosRequestConfig) => {
@@ -27,19 +31,22 @@ apiClient.interceptors.response.use(
 
     if (error.response?.status === 401 && !original._retry) {
       original._retry = true;
-      const { refreshToken, setAccessToken, logout } = useAuthStore.getState();
+      const { setAccessToken, logout } = useAuthStore.getState();
 
-      if (refreshToken) {
-        try {
-          const { data } = await axios.post<{ access: string }>(`${API_BASE}/auth/refresh/`, {
-            refresh: refreshToken,
-          });
-          setAccessToken(data.access);
-          original.headers.Authorization = `Bearer ${data.access}`;
-          return apiClient(original);
-        } catch {
-          // Refresh failed — fall through to logout
-        }
+      try {
+        // No body needed — the refresh token rides along as the httpOnly
+        // cookie the login response set; `withCredentials` is what makes the
+        // browser send it.
+        const { data } = await axios.post<{ access: string }>(
+          `${API_BASE}/auth/refresh/`,
+          {},
+          { withCredentials: true }
+        );
+        setAccessToken(data.access);
+        original.headers.Authorization = `Bearer ${data.access}`;
+        return apiClient(original);
+      } catch {
+        // Refresh failed (cookie missing, expired, or blacklisted) — sign out.
       }
 
       logout();

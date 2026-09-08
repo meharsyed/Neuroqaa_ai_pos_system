@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { LanguageToggle } from "@/components/LanguageToggle";
 import { can } from "@/lib/permissions";
+import { logoutApi } from "@/lib/users";
 import type { User } from "@/types/auth";
 
 interface NavItem {
@@ -78,7 +79,22 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ isCollapsed = false }: AppSidebarProps) {
-  const logout = useAuthStore((s) => s.logout);
+  const clearAuth = useAuthStore((s) => s.logout);
+
+  // Blacklists the refresh-token cookie server-side (so it can't be replayed
+  // even if it had leaked) before clearing local state. Best-effort — if the
+  // request fails (offline, server already gone), signing out locally still
+  // must happen, since the alternative is a "sign out" button that doesn't.
+  async function handleSignOut() {
+    try {
+      await logoutApi();
+    } catch {
+      // Ignore — clearing local auth state below is what actually signs
+      // this device out; the server call is a courtesy, not a dependency.
+    } finally {
+      clearAuth();
+    }
+  }
   const user = useAuthStore((s) => s.user);
   const { t } = useTranslation();
 
@@ -178,7 +194,7 @@ export function AppSidebar({ isCollapsed = false }: AppSidebarProps) {
       {/* Logout button */}
       <div className="px-2 py-2 border-t border-chrome-border">
         <button
-          onClick={logout}
+          onClick={handleSignOut}
           className="flex w-full items-center gap-2.5 px-3 py-2 rounded-md h-9 text-sm text-chrome-muted hover:bg-chrome-hover hover:text-chrome-foreground transition-all duration-150"
           title={isCollapsed ? t("nav.signOut") : undefined}
         >

@@ -1,9 +1,36 @@
 from decimal import Decimal
 
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.text import slugify
 from simple_history.models import HistoricalRecords
+
+# A phone photo of a product easily runs 4-6MB — capped well above that so a
+# real product photo is never rejected, but a multi-hundred-MB upload (by
+# accident or on purpose) can't fill the disk. Format is checked by the
+# browser-supplied content type here and, independently, by Pillow itself —
+# DRF's ImageField only accepts a file it can actually decode as one of these,
+# so a renamed non-image file is rejected regardless of what this check says.
+MAX_PRODUCT_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
+ALLOWED_PRODUCT_IMAGE_TYPES = {
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/heic",
+    "image/heif",
+}
+
+
+def validate_product_image(file) -> None:
+    if file.size > MAX_PRODUCT_IMAGE_BYTES:
+        limit_mb = MAX_PRODUCT_IMAGE_BYTES // (1024 * 1024)
+        raise ValidationError(f"Image is too large — please use one under {limit_mb} MB.")
+    content_type = getattr(file, "content_type", None)
+    if content_type and content_type not in ALLOWED_PRODUCT_IMAGE_TYPES:
+        raise ValidationError(
+            "Unsupported image format — please use JPEG, PNG, WEBP or HEIC/HEIF."
+        )
 
 
 class Category(models.Model):
@@ -61,7 +88,12 @@ class Product(models.Model):
         max_digits=10, decimal_places=3, default=Decimal("0.000")
     )
     is_active = models.BooleanField(default=True)
-    image = models.ImageField(upload_to="products/", blank=True, null=True)
+    image = models.ImageField(
+        upload_to="products/",
+        blank=True,
+        null=True,
+        validators=[validate_product_image],
+    )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

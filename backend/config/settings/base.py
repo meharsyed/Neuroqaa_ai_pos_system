@@ -40,6 +40,7 @@ DJANGO_APPS = [
 THIRD_PARTY_APPS = [
     "rest_framework",
     "rest_framework_simplejwt",
+    "rest_framework_simplejwt.token_blacklist",
     "corsheaders",
     "drf_spectacular",
     "import_export",
@@ -138,17 +139,41 @@ REST_FRAMEWORK = {
         # Ten attempts a minute is far more than a cashier mistyping a password
         # and far less than a password list makes progress with.
         "login": "10/min",
+        # No login gates this one, so it is capped harder, by IP alone —
+        # see apps/sales/public_views.py.
+        "public_receipt": "20/min",
     },
 }
 
 # JWT
+#
+# The refresh token never reaches JavaScript: LoginView and CookieTokenRefreshView
+# (apps/accounts/views.py) strip it out of the response body and set it as an
+# httpOnly cookie instead, so an XSS in the app cannot read it out of
+# localStorage. BLACKLIST_AFTER_ROTATION means a stolen or logged-out refresh
+# token stops working immediately rather than staying valid for its full
+# lifetime — see LogoutView, which blacklists on sign-out.
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
     "ROTATE_REFRESH_TOKENS": True,
-    "BLACKLIST_AFTER_ROTATION": False,
+    "BLACKLIST_AFTER_ROTATION": True,
     "AUTH_HEADER_TYPES": ("Bearer",),
 }
+
+# The refresh-token cookie. Scoped to the one path that ever reads it, so it
+# is never sent on ordinary API calls. SECURE follows DEBUG by default —
+# overridden explicitly wherever that is wrong (see cloud.py / desktop.py).
+JWT_REFRESH_COOKIE_NAME = "refresh_token"
+JWT_REFRESH_COOKIE_PATH = "/api/auth/"
+JWT_REFRESH_COOKIE_SAMESITE = "Lax"
+JWT_REFRESH_COOKIE_SECURE = not DEBUG
+
+# Cookies only cross an origin at all when the browser is told the request
+# may carry credentials — required for the refresh cookie above to work from
+# the Vite dev server (a different origin than the API) and from any split
+# frontend/backend deployment.
+CORS_ALLOW_CREDENTIALS = True
 
 # OpenAPI
 SPECTACULAR_SETTINGS = {

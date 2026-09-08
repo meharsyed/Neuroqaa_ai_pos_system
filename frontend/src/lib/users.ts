@@ -28,6 +28,13 @@ export const usersApi = {
 };
 
 /**
+ * Blacklists the refresh-token cookie server-side and clears it. Best-effort
+ * from the caller's point of view — sign-out proceeds locally either way,
+ * see AppSidebar's handleSignOut.
+ */
+export const logoutApi = () => apiClient.post("/auth/logout/").then(() => undefined);
+
+/**
  * Turn a DRF error into something a person can read.
  *
  * DRF returns field errors as {"email": ["Someone already uses that email."]},

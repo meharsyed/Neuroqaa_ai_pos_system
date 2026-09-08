@@ -4,6 +4,7 @@ Run with: DJANGO_SETTINGS_MODULE=config.settings.cloud
 """
 
 import environ
+from django.core.exceptions import ImproperlyConfigured
 
 from .base import *  # noqa: F401, F403
 
@@ -15,6 +16,16 @@ DEBUG = False
 DATABASES = {"default": env.db("DATABASE_URL")}
 
 CORS_ALLOWED_ORIGINS = env.list("CORS_ALLOWED_ORIGINS", default=[])
+if not CORS_ALLOWED_ORIGINS:
+    # An empty list is not "wide open" — corsheaders reads it as "no browser
+    # origin may ever call this API". That is a silent, confusing way for a
+    # freshly deployed instance to look broken. Fail loudly at boot instead,
+    # the same way a missing SECRET_KEY already does.
+    raise ImproperlyConfigured(
+        "CORS_ALLOWED_ORIGINS is empty. Set it in .env to the exact origin(s) the "
+        "frontend is served from (e.g. https://pos.speedtechsolutions.pk) before "
+        "starting this service."
+    )
 
 SECURE_SSL_REDIRECT = True
 SECURE_HSTS_SECONDS = 31536000

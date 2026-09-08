@@ -60,6 +60,7 @@ class ActivityLog(models.Model):
         SHIFT_CLOSED   = "shift_closed",    "Shift Closed"
         CUSTOMER_CREATED = "customer_created", "Customer Created"
         LOGIN_FAILED   = "login_failed",    "Failed Login Attempt"
+        LOGIN_LOCKED   = "login_locked",    "Login Locked Out"
         USER_CREATED   = "user_created",    "Staff Account Created"
         USER_UPDATED   = "user_updated",    "Staff Account Changed"
         PASSWORD_RESET = "password_reset",  "Password Reset by Owner"

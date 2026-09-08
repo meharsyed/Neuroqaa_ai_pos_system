@@ -1,12 +1,18 @@
+from datetime import timedelta
+
+from django.conf import settings
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.filters import OrderingFilter, SearchFilter
 from rest_framework.pagination import PageNumberPagination
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.tokens import RefreshToken
+from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
 from .activity import log_activity
 from .models import ActivityLog, User
@@ -20,25 +26,95 @@ from .serializers import (
     UserSerializer,
 )
 
+# ── Refresh-token cookie ─────────────────────────────────────────────────────
+#
+# The refresh token never reaches JavaScript. It travels only as an httpOnly
+# cookie scoped to /api/auth/, set here and read by CookieTokenRefreshView —
+# so an XSS anywhere in the app can steal the access token (30 min, low value)
+# but not the refresh token that would let it keep coming back for days.
+
+
+def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
+    response.set_cookie(
+        settings.JWT_REFRESH_COOKIE_NAME,
+        refresh_token,
+        max_age=int(settings.SIMPLE_JWT["REFRESH_TOKEN_LIFETIME"].total_seconds()),
+        path=settings.JWT_REFRESH_COOKIE_PATH,
+        httponly=True,
+        secure=settings.JWT_REFRESH_COOKIE_SECURE,
+        samesite=settings.JWT_REFRESH_COOKIE_SAMESITE,
+    )
+
+
+def _clear_refresh_cookie(response: Response) -> None:
+    response.delete_cookie(
+        settings.JWT_REFRESH_COOKIE_NAME,
+        path=settings.JWT_REFRESH_COOKIE_PATH,
+        samesite=settings.JWT_REFRESH_COOKIE_SAMESITE,
+    )
+
+
+# ── Login lockout ────────────────────────────────────────────────────────────
+#
+# The `login` throttle scope (10/min, see REST_FRAMEWORK settings) limits how
+# fast anyone can hit this endpoint at all. This is a second, narrower guard
+# on top of it: it locks the one account being guessed at, using the
+# login_failed activity log that already exists — no new table, no cache
+# backend to configure, and it works correctly across every gunicorn worker
+# because it reads from the database.
+LOGIN_LOCKOUT_THRESHOLD = 5
+LOGIN_LOCKOUT_WINDOW = timedelta(minutes=15)
+
+
+def _recent_failed_attempts(email: str) -> int:
+    if not email:
+        return 0
+    since = timezone.now() - LOGIN_LOCKOUT_WINDOW
+    return ActivityLog.objects.filter(
+        action="login_failed",
+        details__email__iexact=email,
+        created_at__gte=since,
+    ).count()
+
 
 class LoginView(TokenObtainPairView):
     serializer_class = POSTokenObtainPairSerializer
     throttle_scope = "login"
+    permission_classes = [AllowAny]
 
     @extend_schema(
         summary="Login",
-        description="Returns access + refresh tokens plus the authenticated user object.",
+        description=(
+            "Returns an access token plus the authenticated user object. "
+            "The refresh token is set as an httpOnly cookie, not returned in the body."
+        ),
     )
     def post(self, request, *args, **kwargs):
+        attempted_email = str(request.data.get("email", ""))[:150].strip()
+
+        failures = _recent_failed_attempts(attempted_email)
+        if failures >= LOGIN_LOCKOUT_THRESHOLD:
+            log_activity(
+                "login_locked", user=None, details={"email": attempted_email}, request=request,
+            )
+            return Response(
+                {
+                    "detail": (
+                        "Too many failed attempts for this account. "
+                        f"Try again in {LOGIN_LOCKOUT_WINDOW.seconds // 60} minutes, "
+                        "or ask an owner to reset the password."
+                    )
+                },
+                status=status.HTTP_429_TOO_MANY_REQUESTS,
+            )
+
         response = super().post(request, *args, **kwargs)
         if response.status_code == status.HTTP_200_OK:
+            refresh_token = response.data.pop("refresh", None)
+            if refresh_token:
+                _set_refresh_cookie(response, refresh_token)
+
             user_data = response.data.get("user", {})
-            ip = (
-                request.META.get("HTTP_X_FORWARDED_FOR", "").split(",")[0].strip()
-                or request.META.get("REMOTE_ADDR", "")
-            )
-            # Look up the user object to pass to log_activity
-            from apps.accounts.models import User
             try:
                 user_obj = User.objects.get(email=user_data.get("email", ""))
                 log_activity(
@@ -76,6 +152,71 @@ class LoginView(TokenObtainPairView):
         return response
 
 
+class CookieTokenRefreshView(TokenRefreshView):
+    """
+    Same as SimpleJWT's TokenRefreshView, except the refresh token comes from
+    the httpOnly cookie instead of the request body, and the (rotated) refresh
+    token goes back out the same way rather than in the JSON response.
+    """
+
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        cookie_token = request.COOKIES.get(settings.JWT_REFRESH_COOKIE_NAME)
+        if not cookie_token:
+            return Response(
+                {"detail": "No refresh token cookie — please sign in again."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        data = request.data.copy() if hasattr(request.data, "copy") else dict(request.data)
+        data["refresh"] = cookie_token
+        serializer = self.get_serializer(data=data)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except TokenError:
+            response = Response(
+                {"detail": "Your session has expired — please sign in again."},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+            _clear_refresh_cookie(response)
+            return response
+
+        result = dict(serializer.validated_data)
+        rotated_refresh = result.pop("refresh", None)
+        response = Response(result, status=status.HTTP_200_OK)
+        if rotated_refresh:
+            _set_refresh_cookie(response, rotated_refresh)
+        return response
+
+
+class LogoutView(APIView):
+    """
+    Blacklists the refresh token (so it cannot be replayed even if it leaked)
+    and clears the cookie. Always succeeds from the client's point of view —
+    there is nothing useful to do differently if the cookie is already gone
+    or the token already expired.
+    """
+
+    permission_classes = [AllowAny]
+
+    @extend_schema(summary="Log out — blacklists the refresh token")
+    def post(self, request):
+        cookie_token = request.COOKIES.get(settings.JWT_REFRESH_COOKIE_NAME)
+        if cookie_token:
+            try:
+                RefreshToken(cookie_token).blacklist()
+            except TokenError:
+                pass
+
+        if request.user and request.user.is_authenticated:
+            log_activity("logout", user=request.user, details={}, request=request)
+
+        response = Response({"detail": "Logged out."})
+        _clear_refresh_cookie(response)
+        return response
+
+
 class ChangeOwnPasswordView(APIView):
     """
     Any signed-in user changing their own password.
@@ -97,8 +238,13 @@ class ChangeOwnPasswordView(APIView):
         user.save(update_fields=["password", "must_change_password", "updated_at"])
 
         log_activity("password_changed", user=user, details={"self": True}, request=request)
-        # The old tokens still work — they are signed, not stored. Say so rather
-        # than implying every other device has been signed out.
+        # Any access token issued before this still works until it naturally
+        # expires (up to 30 min) — it is signed, not stored, so nothing short
+        # of that expiry invalidates it early. Refresh tokens *can* now be
+        # revoked (LogoutView blacklists one on sign-out), but a password
+        # change does not automatically blacklist every outstanding refresh
+        # token for this user — only an explicit sign-out on each device does.
+        # Worth revisiting if "someone else is on my account" ever comes up.
         return Response({"detail": "Password changed."})
 
 
