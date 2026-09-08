@@ -1,3 +1,5 @@
+import { PageContainer } from "@/layouts/components/PageContainer";
+import { PageHeader } from "@/layouts/components/PageHeader";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -5,12 +7,19 @@ import {
   Phone, TrendingUp, Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Money } from "@/components/ui/money";
+import { DateTime } from "@/components/ui/date-display";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
+import { FormTextField, FormSelectField } from "@/components/forms";
 import { paiseToRupees } from "@/lib/catalog";
 import { customersApi } from "@/lib/customers";
+import { useToast } from "@/lib/use-toast";
 import type { Customer, CustomerGender } from "@/types/customers";
 import type { Sale } from "@/types/sales";
+import { useTranslation } from "@/lib/useTranslation";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -20,8 +29,8 @@ const GENDER_LABELS: Record<CustomerGender, string> = {
 
 function GenderBadge({ gender }: { gender: CustomerGender }) {
   const cls: Record<CustomerGender, string> = {
-    M: "bg-blue-100 text-blue-700",
-    F: "bg-pink-100 text-pink-700",
+    M: "bg-info-bg text-info",
+    F: "bg-teal-100 text-teal-700",
     O: "bg-muted text-muted-foreground",
   };
   return (
@@ -46,6 +55,7 @@ function CustomerHistoryModal({
   customer: Customer;
   onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const [page, setPage] = useState(1);
 
   const { data, isLoading } = useQuery({
@@ -78,7 +88,7 @@ function CustomerHistoryModal({
             </div>
           </div>
           <div className="text-right shrink-0 mr-2">
-            <p className="font-bold text-sm font-mono">{paiseToRupees(customer.total_revenue_paise)}</p>
+            <Money paise={customer.total_revenue_paise} className="font-bold text-sm" />
             <p className="text-xs text-muted-foreground">{customer.total_sales} purchase{customer.total_sales !== 1 ? "s" : ""}</p>
           </div>
           <button
@@ -95,8 +105,29 @@ function CustomerHistoryModal({
           </h3>
 
           {isLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground py-4">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+            <div className="rounded-xl border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/40 border-b">
+                  <tr>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.billNumber")}</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.date")}</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.items")}</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.total")}</th>
+                    <th className="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.status")}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {[...Array(3)].map((_, i) => (
+                    <tr key={i}>
+                      <td className="px-4 py-2.5"><Skeleton className="h-4 w-20" /></td>
+                      <td className="px-4 py-2.5"><Skeleton className="h-4 w-20" /></td>
+                      <td className="px-4 py-2.5"><Skeleton className="h-4 w-8 ml-auto" /></td>
+                      <td className="px-4 py-2.5"><Skeleton className="h-4 w-16 ml-auto" /></td>
+                      <td className="px-4 py-2.5"><Skeleton className="h-4 w-12 mx-auto" /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           ) : sales.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-6">No purchases yet.</p>
@@ -105,11 +136,11 @@ function CustomerHistoryModal({
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 border-b">
                   <tr>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Bill #</th>
-                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Date</th>
-                    <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Items</th>
-                    <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total</th>
-                    <th className="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.billNumber")}</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.date")}</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.items")}</th>
+                    <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.total")}</th>
+                    <th className="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.status")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
@@ -121,14 +152,14 @@ function CustomerHistoryModal({
                       }`}
                     >
                       <td className="px-4 py-2.5 font-mono text-xs font-semibold">{sale.sale_number}</td>
-                      <td className="px-4 py-2.5 text-xs text-muted-foreground">{formatDate(sale.created_at)}</td>
+                      <td className="px-4 py-2.5 text-xs text-muted-foreground"><DateTime value={new Date(sale.created_at)} format="short" /></td>
                       <td className="px-4 py-2.5 text-right text-xs">{sale.items.length}</td>
                       <td className="px-4 py-2.5 text-right font-mono font-semibold">
-                        {paiseToRupees(sale.total_paise)}
+                        <Money paise={sale.total_paise} />
                       </td>
                       <td className="px-4 py-2.5 text-center">
                         <Badge
-                          variant={sale.status === "completed" ? "success" : "destructive"}
+                          variant={sale.status === "completed" ? "success" : "danger"}
                           className="text-[10px]"
                         >
                           {sale.status}
@@ -170,6 +201,7 @@ function CustomerHistoryModal({
 
 function AddCustomerModal({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const [name, setName]     = useState("");
   const [phone, setPhone]   = useState("");
   const [gender, setGender] = useState<CustomerGender>("O");
@@ -183,7 +215,8 @@ function AddCustomerModal({ onClose }: { onClose: () => void }) {
         gender,
         notes: notes.trim() || undefined,
       }),
-    onSuccess: () => {
+    onSuccess: (customer) => {
+      toast({ title: "Customer added", description: `${customer.name || customer.phone} added successfully` });
       qc.invalidateQueries({ queryKey: ["customers"] });
       onClose();
     },
@@ -205,60 +238,46 @@ function AddCustomerModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="p-5 space-y-4">
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              Name <span className="normal-case font-normal">(optional)</span>
-            </label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Customer name"
-            />
-          </div>
+          <FormTextField
+            label="Name"
+            name="name"
+            value={name}
+            onChange={setName}
+            placeholder="Customer name"
+            hint="Optional"
+          />
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              Phone Number
-            </label>
-            <Input
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              placeholder="03001234567"
-              type="tel"
-            />
-          </div>
+          <FormTextField
+            label="Phone Number"
+            name="phone"
+            value={phone}
+            onChange={setPhone}
+            placeholder="03001234567"
+            type="tel"
+            hint="Format: 03XX XXXXXXX"
+            required
+          />
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              Gender
-            </label>
-            <div className="flex gap-2">
-              {(["M", "F", "O"] as CustomerGender[]).map((g) => (
-                <button
-                  key={g}
-                  onClick={() => setGender(g)}
-                  className={`flex-1 py-1.5 rounded-lg border text-sm font-medium transition-colors ${
-                    gender === g
-                      ? "bg-primary text-primary-foreground border-primary"
-                      : "border-border text-muted-foreground hover:border-primary/50"
-                  }`}
-                >
-                  {GENDER_LABELS[g]}
-                </button>
-              ))}
-            </div>
-          </div>
+          <FormSelectField
+            label="Gender"
+            name="gender"
+            value={gender}
+            onChange={(v) => setGender(v as CustomerGender)}
+            options={[
+              { value: "M", label: "Male" },
+              { value: "F", label: "Female" },
+              { value: "O", label: "Other" },
+            ]}
+          />
 
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              Notes <span className="normal-case font-normal">(optional)</span>
-            </label>
-            <Input
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="e.g. VIP, contractor, bulk buyer"
-            />
-          </div>
+          <FormTextField
+            label="Notes"
+            name="notes"
+            value={notes}
+            onChange={setNotes}
+            placeholder="e.g. VIP, contractor, bulk buyer"
+            hint="Optional - for your reference"
+          />
 
           {isError && (
             <p className="text-xs text-destructive bg-destructive/10 rounded-lg px-3 py-2">
@@ -291,6 +310,7 @@ function AddCustomerModal({ onClose }: { onClose: () => void }) {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function CustomersPage() {
+  const { t } = useTranslation();
   const [search, setSearch]           = useState("");
   const [page, setPage]               = useState(1);
   const [selected, setSelected]       = useState<Customer | null>(null);
@@ -307,26 +327,18 @@ export default function CustomersPage() {
   const totalPages = Math.ceil(totalCount / 10) || 1;
 
   return (
-    <div className="min-h-full flex flex-col">
-      {/* Header */}
-      <div className="px-6 pt-6 pb-4 border-b bg-gradient-to-r from-primary/5 to-transparent">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <Users className="h-5 w-5 text-primary" />
-            <div>
-              <h1 className="text-xl font-bold">Customers</h1>
-              <p className="text-sm text-muted-foreground">
-                {totalCount.toLocaleString()} registered customer{totalCount !== 1 ? "s" : ""}
-              </p>
-            </div>
-          </div>
+    <PageContainer>
+      <PageHeader
+        title={t("customers.title")}
+        subtitle={t("customers.subtitle", { count: totalCount.toLocaleString() })}
+        actions={
           <Button size="sm" onClick={() => setShowAdd(true)} className="gap-1.5">
-            <Plus className="h-4 w-4" /> Add Customer
+            <Plus className="h-4 w-4" /> {t("customers.newCustomer")}
           </Button>
-        </div>
-      </div>
+        }
+      />
 
-      <div className="flex-1 p-6 space-y-4">
+      <div className="space-y-4">
 
         {/* Search */}
         <div className="relative max-w-sm">
@@ -341,32 +353,56 @@ export default function CustomersPage() {
 
         {/* Customer list */}
         {isLoading ? (
-          <div className="rounded-xl border p-12 text-center text-sm text-muted-foreground">
-            Loading…
+          <div className="rounded-xl border overflow-hidden shadow-sm">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 border-b">
+                <tr>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.customer")}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.phone")}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("customers.colGender")}</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("customers.colPurchases")}</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("customers.colTotalSpent")}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("customers.colJoined")}</th>
+                  <th className="w-10" />
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {[...Array(5)].map((_, i) => (
+                  <tr key={i}>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-32" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-24" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-16" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-8 ml-auto" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-20 ml-auto" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>
+                    <td className="pr-3"><Skeleton className="h-4 w-4 mx-auto" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : customers.length === 0 ? (
-          <div className="rounded-xl border p-12 text-center">
-            <Users className="h-8 w-8 mx-auto mb-3 opacity-15" />
-            <p className="text-sm font-medium text-muted-foreground">
-              {search ? "No customers match your search" : "No customers yet"}
-            </p>
-            {!search && (
-              <Button size="sm" className="mt-4 gap-1.5" onClick={() => setShowAdd(true)}>
-                <Plus className="h-3.5 w-3.5" /> Add First Customer
+          <EmptyState
+            icon={Users}
+            title={search ? "No customers match your search" : "No customers yet"}
+            description={search ? "Try a different search term." : "Add your first customer to start building relationships and tracking purchase history."}
+            action={!search ? (
+              <Button size="sm" onClick={() => setShowAdd(true)} className="gap-1.5">
+                <Plus className="h-4 w-4" /> Add First Customer
               </Button>
-            )}
-          </div>
+            ) : undefined}
+          />
         ) : (
           <div className="rounded-xl border overflow-hidden shadow-sm">
             <table className="w-full text-sm">
               <thead className="bg-muted/40 border-b">
                 <tr>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Customer</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Phone</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Gender</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Purchases</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total Spent</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Joined</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.customer")}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.phone")}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("customers.colGender")}</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("customers.colPurchases")}</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("customers.colTotalSpent")}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("customers.colJoined")}</th>
                   <th className="w-10" />
                 </tr>
               </thead>
@@ -450,6 +486,6 @@ export default function CustomersPage() {
         <CustomerHistoryModal customer={selected} onClose={() => setSelected(null)} />
       )}
       {showAdd && <AddCustomerModal onClose={() => setShowAdd(false)} />}
-    </div>
+    </PageContainer>
   );
 }

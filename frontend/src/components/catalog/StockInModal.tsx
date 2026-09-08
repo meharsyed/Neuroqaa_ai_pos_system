@@ -11,6 +11,7 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription,
 } from "@/components/ui/dialog";
 import { catalogApi, rupeesToPaise } from "@/lib/catalog";
+import { useToast } from "@/lib/use-toast";
 import type { Product } from "@/types/catalog";
 
 const schema = z.object({
@@ -30,6 +31,7 @@ interface Props {
 
 export function StockInModal({ open, onOpenChange, product }: Props) {
   const qc = useQueryClient();
+  const { toast } = useToast();
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormValues>({
     resolver: zodResolver(schema),
@@ -57,6 +59,7 @@ export function StockInModal({ open, onOpenChange, product }: Props) {
       });
     },
     onSuccess: () => {
+      toast({ title: "Stock added", description: `${product?.name} inventory updated` });
       qc.invalidateQueries({ queryKey: ["products"] });
       qc.invalidateQueries({ queryKey: ["inventory"] });
       qc.invalidateQueries({ queryKey: ["low-stock"] });

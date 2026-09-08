@@ -1,3 +1,5 @@
+import { PageContainer } from "@/layouts/components/PageContainer";
+import { PageHeader } from "@/layouts/components/PageHeader";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -8,12 +10,18 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
-import { paiseToRupees } from "@/lib/catalog";
+import { DateTime } from "@/components/ui/date-display";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Money } from "@/components/ui/money";
 import { salesApi } from "@/lib/sales";
 import { configApi } from "@/lib/config";
 import { openReceiptPdf, printReceipt, type ReceiptTemplate } from "@/lib/reports";
+import ShareReceiptButton from "@/components/ShareReceiptButton";
 import { useAuthStore } from "@/store/authStore";
+import { useToast } from "@/lib/use-toast";
 import type { Sale } from "@/types/sales";
+import { useTranslation } from "@/lib/useTranslation";
 
 function formatDt(iso: string) {
   return new Date(iso).toLocaleString("en-PK", {
@@ -21,6 +29,7 @@ function formatDt(iso: string) {
     timeStyle: "short",
   });
 }
+
 
 // ── Detail modal ──────────────────────────────────────────────────────────────
 
@@ -33,7 +42,9 @@ function SaleDetailModal({
   onClose: () => void;
   canVoid: boolean;
 }) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
+  const { toast } = useToast();
   const [template, setTemplate] = useState<ReceiptTemplate>("thermal");
   const [templateTouched, setTemplateTouched] = useState(false);
 
@@ -52,23 +63,28 @@ function SaleDetailModal({
   const { mutate: voidSale, isPending: isVoiding } = useMutation({
     mutationFn: () => salesApi.void(sale.id),
     onSuccess: () => {
+      toast({ title: "Sale voided", description: `${sale.sale_number} has been voided successfully` });
       qc.invalidateQueries({ queryKey: ["bills"] });
       onClose();
     },
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4">
-      <div className="bg-background rounded-xl shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto animate-fade-in-scale">
+    <>
+      {/* Overlay */}
+      <div className="fixed inset-0 z-40 bg-black/30" onClick={onClose} />
+
+      {/* Slide-over panel */}
+      <div className="fixed right-0 top-0 h-screen w-full max-w-md bg-background shadow-2xl z-50 flex flex-col animate-fade-in-scale">
 
         {/* Header */}
         <div className="sticky top-0 bg-background px-5 py-4 border-b flex items-center justify-between z-10">
           <div>
             <p className="font-bold font-mono">{sale.sale_number}</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{formatDt(sale.created_at)}</p>
+            <p className="text-xs text-muted-foreground mt-0.5"><DateTime value={new Date(sale.created_at)} format="short" /></p>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant={sale.status === "completed" ? "success" : "destructive"}>
+            <Badge variant={sale.status === "completed" ? "success" : "danger"}>
               {sale.status}
             </Badge>
             <button
@@ -80,7 +96,7 @@ function SaleDetailModal({
           </div>
         </div>
 
-        <div className="p-5 space-y-5">
+        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-5">
           {/* Meta */}
           <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-sm">
             <span className="text-muted-foreground">Cashier</span>
@@ -109,28 +125,49 @@ function SaleDetailModal({
               <table className="w-full text-sm">
                 <thead className="bg-muted/40">
                   <tr>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">Product</th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Qty</th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Rate</th>
-                    <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">Total</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-muted-foreground">{t("common.product")}</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">{t("common.qty")}</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">{t("common.rate")}</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-muted-foreground">{t("common.total")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {sale.items.map((item) => (
                     <tr key={item.id}>
-                      <td className="px-3 py-2">
-                        <p className="font-medium">{item.product_name}</p>
-                        <p className="text-[10px] text-muted-foreground font-mono">{item.product_sku}</p>
-                      </td>
-                      <td className="px-3 py-2 text-right font-mono text-xs">{item.qty}</td>
-                      <td className="px-3 py-2 text-right text-xs">{paiseToRupees(item.unit_price_paise)}</td>
-                      <td className="px-3 py-2 text-right font-mono font-semibold">
-                        {paiseToRupees(item.subtotal_paise)}
-                        {item.discount_paise > 0 && (
-                          <p className="text-[10px] text-amber-600 font-normal">
-                            −{paiseToRupees(item.discount_paise)} disc
-                          </p>
+                      <td colSpan={4} className="px-3 py-2">
+                        <div className="flex justify-between gap-4 mb-1">
+                          <div>
+                            <p className="font-medium">{item.product_name}</p>
+                            <p className="text-[10px] text-muted-foreground font-mono">{item.product_sku}</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-mono text-xs">{item.qty}</p>
+                            <p className="text-xs text-muted-foreground"><Money paise={item.unit_price_paise} /></p>
+                          </div>
+                        </div>
+                        {item.serials && item.serials.length > 0 && (
+                          <div className="mt-2 space-y-1 bg-info-bg rounded border border-info/40 p-2">
+                            {item.serials.map((serial, sidx) => (
+                              <div key={sidx} className="text-[10px]">
+                                <p className="font-mono font-semibold text-info">{serial.serial}</p>
+                                {serial.warranty_months && (
+                                  <p className="text-info">Warranty: {serial.warranty_months} months</p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
                         )}
+                        <div className="flex justify-between mt-2 pt-2 border-t">
+                          <span className="text-xs text-muted-foreground">Line Total</span>
+                          <span className="text-xs font-mono font-semibold">
+                            <Money paise={item.subtotal_paise} />
+                            {item.discount_paise > 0 && (
+                              <p className="text-[10px] text-warning font-normal">
+                                −<Money paise={item.discount_paise} /> disc
+                              </p>
+                            )}
+                          </span>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -143,28 +180,58 @@ function SaleDetailModal({
           <div className="rounded-lg bg-muted/30 p-4 space-y-1.5 text-sm">
             <div className="flex justify-between text-muted-foreground">
               <span>Subtotal</span>
-              <span className="font-mono">{paiseToRupees(sale.subtotal_paise)}</span>
+              <span className="font-mono"><Money paise={sale.subtotal_paise} /></span>
             </div>
             {sale.discount_paise > 0 && (
-              <div className="flex justify-between text-amber-600">
+              <div className="flex justify-between text-warning">
                 <span>Discount</span>
-                <span className="font-mono">− {paiseToRupees(sale.discount_paise)}</span>
+                <span className="font-mono">− <Money paise={sale.discount_paise} /></span>
               </div>
             )}
-            <div className="flex justify-between font-bold text-base border-t pt-2">
-              <span>Total</span>
-              <span className="font-mono">{paiseToRupees(sale.total_paise)}</span>
+            <div className={`flex justify-between border-t pt-2 ${
+              sale.installation_paise > 0 ? "text-sm" : "font-bold text-base"
+            }`}>
+              <span>{sale.installation_paise > 0 ? "Goods total" : "Total"}</span>
+              <span className="font-mono"><Money paise={sale.total_paise} /></span>
             </div>
-            {sale.payment && (
-              <div className="border-t pt-2 space-y-1.5">
-                <div className="flex justify-between text-muted-foreground">
-                  <span>Paid ({sale.payment.method.toUpperCase()})</span>
-                  <span className="font-mono">{paiseToRupees(sale.payment.amount_tendered_paise)}</span>
+            {sale.installation_paise > 0 && (
+              <>
+                <div className="flex justify-between text-sm text-info">
+                  <span>
+                    Installation
+                    {sale.installation_note ? ` — ${sale.installation_note}` : ""}
+                  </span>
+                  <span className="font-mono"><Money paise={sale.installation_paise} /></span>
                 </div>
-                {sale.payment.change_paise > 0 && (
-                  <div className="flex justify-between text-emerald-600 font-medium">
+                <div className="flex justify-between font-bold text-base">
+                  <span>Amount due</span>
+                  <span className="font-mono"><Money paise={sale.amount_due_paise} /></span>
+                </div>
+              </>
+            )}
+            {/* A bill can be settled by several tenders — show each of them,
+                and call out anything that went on khata. */}
+            {sale.payments && sale.payments.length > 0 && (
+              <div className="border-t pt-2 space-y-1.5">
+                {sale.payments.map((p) => (
+                  <div
+                    key={p.id ?? p.method}
+                    className={`flex justify-between ${
+                      p.method === "credit" ? "font-medium text-warning" : "text-muted-foreground"
+                    }`}
+                  >
+                    <span>
+                      {p.method === "credit"
+                        ? "On khata"
+                        : `Paid (${p.method.replace("_", " ").toUpperCase()})`}
+                    </span>
+                    <span className="font-mono"><Money paise={p.amount_paise} /></span>
+                  </div>
+                ))}
+                {(sale.payment?.change_paise ?? 0) > 0 && (
+                  <div className="flex justify-between text-teal-600 font-medium">
                     <span>Change</span>
-                    <span className="font-mono">{paiseToRupees(sale.payment.change_paise)}</span>
+                    <span className="font-mono"><Money paise={sale.payment!.change_paise} /></span>
                   </div>
                 )}
               </div>
@@ -195,12 +262,17 @@ function SaleDetailModal({
                   size="sm"
                   onClick={() =>
                     printReceipt(sale.id).catch(() =>
-                      alert("Printer not available. Check Settings → thermal_printer_ip.")
+                      toast({
+                        title: "Printer not available",
+                        description: "Check Settings → thermal_printer_ip.",
+                        variant: "error",
+                      })
                     )
                   }
                 >
                   <Printer className="h-3.5 w-3.5 mr-1.5" /> Send to Thermal Printer
                 </Button>
+                <ShareReceiptButton saleId={sale.id} saleNumber={sale.sale_number} />
               </>
             )}
             {canVoid && sale.status === "completed" && (
@@ -220,13 +292,15 @@ function SaleDetailModal({
           </div>
         </div>
       </div>
-    </div>
+      {/* Close overlay and panel */}
+    </>
   );
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function BillsPage() {
+  const { t } = useTranslation();
   const user = useAuthStore((s) => s.user);
   const canVoid = user?.role === "owner" || user?.role === "manager";
 
@@ -261,21 +335,13 @@ export default function BillsPage() {
   }
 
   return (
-    <div className="min-h-full flex flex-col">
-      {/* Header */}
-      <div className="px-6 pt-6 pb-4 border-b bg-gradient-to-r from-primary/5 to-transparent">
-        <div className="flex items-center gap-2.5">
-          <Receipt className="h-5 w-5 text-primary" />
-          <div>
-            <h1 className="text-xl font-bold">Bills &amp; Sales History</h1>
-            <p className="text-sm text-muted-foreground">
-              Search, filter, and review all past transactions
-            </p>
-          </div>
-        </div>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title={t("bills.title")}
+        subtitle={t("bills.subtitle")}
+      />
 
-      <div className="flex-1 p-6 space-y-4">
+      <div className="space-y-4">
 
         {/* Filter bar */}
         <div className="flex flex-wrap gap-2 items-end">
@@ -285,7 +351,7 @@ export default function BillsPage() {
             <Input
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-              placeholder="Bill number, customer name or phone…"
+              placeholder="Bill #, customer name, phone, or serial number…"
               className="pl-9"
             />
           </div>
@@ -338,42 +404,96 @@ export default function BillsPage() {
 
         {/* Result count */}
         {data && (
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span className="flex items-center gap-1.5">
-              <Filter className="h-3.5 w-3.5" />
-              {totalCount.toLocaleString()} bill{totalCount !== 1 ? "s" : ""} found
-            </span>
-            {totalPages > 1 && <span>Page {page} of {totalPages}</span>}
-          </div>
+          <>
+            <div className="flex items-center justify-between text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <Filter className="h-3.5 w-3.5" />
+                {totalCount.toLocaleString()} bill{totalCount !== 1 ? "s" : ""} found
+              </span>
+              {totalPages > 1 && <span>Page {page} of {totalPages}</span>}
+            </div>
+
+            {/* Summary strip */}
+            {sales.length > 0 && (
+              <div className="grid grid-cols-3 gap-3 bg-muted/30 rounded-lg p-3 text-xs">
+                <div className="text-center">
+                  <p className="text-muted-foreground">Total Customers</p>
+                  <p className="font-bold text-foreground mt-1">
+                    {new Set(sales.map(s => s.customer_phone || s.customer_name || "walk-in")).size}
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-muted-foreground">Total Revenue</p>
+                  <p className="font-bold text-foreground mt-1">
+                    <Money paise={sales.reduce((sum, s) => sum + s.total_paise, 0)} compact />
+                  </p>
+                </div>
+                <div className="text-center">
+                  <p className="text-muted-foreground">Avg Transaction</p>
+                  <p className="font-bold text-foreground mt-1">
+                    <Money paise={Math.round(sales.reduce((sum, s) => sum + s.total_paise, 0) / sales.length)} compact />
+                  </p>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* Table */}
         {isLoading ? (
-          <div className="rounded-xl border p-12 text-center text-sm text-muted-foreground">
-            Loading bills…
+          <div className="rounded-xl border overflow-hidden shadow-sm">
+            <table className="w-full text-sm">
+              <thead className="bg-muted/40 border-b">
+                <tr>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.billNumber")}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("bills.colDateTime")}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.customer")}</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.items")}</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.total")}</th>
+                  <th className="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("bills.colPay")}</th>
+                  <th className="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.status")}</th>
+                  <th className="w-10" />
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {[...Array(5)].map((_, i) => (
+                  <tr key={i}>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-20" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-32" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-24" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-8 ml-auto" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-16 ml-auto" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-12 mx-auto" /></td>
+                    <td className="px-4 py-3"><Skeleton className="h-4 w-4 mx-auto" /></td>
+                    <td className="pr-3"><Skeleton className="h-4 w-4 mx-auto" /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : sales.length === 0 ? (
-          <div className="rounded-xl border p-12 text-center">
-            <Receipt className="h-8 w-8 mx-auto mb-3 opacity-15" />
-            <p className="text-sm font-medium text-muted-foreground">No bills found</p>
-            {hasFilters && (
-              <button onClick={clearFilters} className="text-xs text-primary hover:underline mt-1">
-                Clear filters
-              </button>
-            )}
-          </div>
+          <EmptyState
+            icon={Receipt}
+            title="No bills found"
+            description={hasFilters ? "Try adjusting your filters to find what you're looking for." : "No transactions yet. Create your first sale from the checkout."}
+            action={hasFilters ? (
+              <Button size="sm" variant="outline" onClick={clearFilters} className="gap-1.5">
+                <X className="h-3.5 w-3.5" /> Clear filters
+              </Button>
+            ) : undefined}
+          />
         ) : (
           <div className="rounded-xl border overflow-hidden shadow-sm">
             <table className="w-full text-sm">
               <thead className="bg-muted/40 border-b">
                 <tr>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Bill #</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Date &amp; Time</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">Customer</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Items</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">Total</th>
-                  <th className="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Pay</th>
-                  <th className="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.billNumber")}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("bills.colDateTime")}</th>
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.customer")}</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.items")}</th>
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.total")}</th>
+                  <th className="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("bills.colPay")}</th>
+                  <th className="px-4 py-2.5 text-center text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t("common.status")}</th>
                   <th className="w-10" />
                 </tr>
               </thead>
@@ -408,18 +528,20 @@ export default function BillsPage() {
                       {sale.items.length}
                     </td>
                     <td className="px-4 py-3 text-right font-mono font-semibold">
-                      {paiseToRupees(sale.total_paise)}
+                      <Money paise={sale.total_paise} />
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className="text-[10px] bg-muted px-1.5 py-0.5 rounded uppercase font-mono">
-                        {sale.payment?.method ?? "—"}
+                        {sale.payments?.length
+                          ? sale.payments.map((p) => p.method).join(" + ")
+                          : "—"}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
                       {sale.status === "completed" ? (
-                        <CheckCircle2 className="h-4 w-4 text-emerald-500 mx-auto" />
+                        <CheckCircle2 className="h-4 w-4 text-teal-500 mx-auto" />
                       ) : (
-                        <XCircle className="h-4 w-4 text-red-400 mx-auto" />
+                        <XCircle className="h-4 w-4 text-destructive mx-auto" />
                       )}
                     </td>
                     <td className="pr-3 text-center">
@@ -469,6 +591,6 @@ export default function BillsPage() {
           canVoid={canVoid}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }

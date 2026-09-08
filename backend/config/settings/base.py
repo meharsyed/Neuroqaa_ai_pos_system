@@ -124,6 +124,21 @@ REST_FRAMEWORK = {
         "rest_framework.filters.SearchFilter",
         "rest_framework.filters.OrderingFilter",
     ],
+    # A login page on the open internet is brute-forced by bots within days of
+    # the DNS record appearing. "login" is applied to LoginView by scope; the
+    # anon/user rates are a backstop for everything else.
+    "DEFAULT_THROTTLE_CLASSES": [
+        "rest_framework.throttling.AnonRateThrottle",
+        "rest_framework.throttling.UserRateThrottle",
+        "rest_framework.throttling.ScopedRateThrottle",
+    ],
+    "DEFAULT_THROTTLE_RATES": {
+        "anon": "60/min",
+        "user": "1000/min",
+        # Ten attempts a minute is far more than a cashier mistyping a password
+        # and far less than a password list makes progress with.
+        "login": "10/min",
+    },
 }
 
 # JWT

@@ -1,20 +1,15 @@
 import { useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import {
-  Zap,
-  Mail,
-  Lock,
   ArrowRight,
   CheckCircle2,
-  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { FormPasswordField, FormTextField } from "@/components/forms";
 import { useAuthStore } from "@/store/authStore";
 import { apiClient } from "@/lib/axios";
 import { useTranslation } from "@/lib/useTranslation";
@@ -47,7 +42,7 @@ export default function LoginPage() {
   );
 
   const {
-    register,
+    control,
     handleSubmit,
     formState: { errors },
   } = useForm<LoginForm>({ resolver: zodResolver(loginSchema) });
@@ -68,25 +63,25 @@ export default function LoginPage() {
     <div className="min-h-screen flex">
 
       {/* ── Left decorative panel ─────────────────────────────────── */}
-      <div className="hidden lg:flex lg:w-5/12 xl:w-[46%] relative overflow-hidden bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 flex-col justify-between p-12">
+      <div className="hidden lg:flex lg:w-5/12 xl:w-[46%] relative overflow-hidden bg-gradient-to-br from-green-900 via-green-800 to-green-950 flex-col justify-between p-12">
 
         {/* Dot grid overlay */}
         <div className="absolute inset-0 bg-dot-grid opacity-100 pointer-events-none" />
 
         {/* Animated blobs */}
-        <div className="absolute top-16 -right-20 w-96 h-96 rounded-full bg-blue-600/25 blur-3xl animate-float pointer-events-none" />
-        <div className="absolute bottom-24 -left-16 w-80 h-80 rounded-full bg-indigo-600/25 blur-3xl animate-float-slow pointer-events-none" />
-        <div className="absolute top-1/2 right-1/3 w-52 h-52 rounded-full bg-cyan-500/15 blur-2xl animate-float-reverse pointer-events-none" />
+        <div className="absolute top-16 -right-20 w-96 h-96 rounded-full bg-teal-600/25 blur-3xl animate-float pointer-events-none" />
+        <div className="absolute bottom-24 -left-16 w-80 h-80 rounded-full bg-green-600/25 blur-3xl animate-float-slow pointer-events-none" />
+        <div className="absolute top-1/2 right-1/3 w-52 h-52 rounded-full bg-teal-500/15 blur-2xl animate-float-reverse pointer-events-none" />
 
         {/* Top: logo mark */}
         <div className="relative z-10 animate-fade-up">
           <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-xl glass flex items-center justify-center animate-glow-pulse">
-              <Zap className="h-5 w-5 text-white" />
+            <div className="h-11 w-11 rounded-xl glass flex items-center justify-center animate-glow-pulse">
+              <img src="/brand/logo-mark-mono-light.svg" alt="" className="h-6 w-6" />
             </div>
             <div>
               <span className="text-white font-bold text-lg leading-tight block">
-                Neuroqaa POS
+                Speed Tech Solutions
               </span>
               <span className="text-white/50 text-xs">{t("login.pointOfSaleSystem")}</span>
             </div>
@@ -98,7 +93,7 @@ export default function LoginPage() {
           <div className="animate-fade-up-delay-1 space-y-3">
             <h2 className="text-4xl font-extrabold text-white leading-tight tracking-tight">
               {t("login.headline1")}<br />
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-cyan-300">
+              <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-300 to-teal-300">
                 {t("login.headline2")}
               </span>
             </h2>
@@ -110,7 +105,7 @@ export default function LoginPage() {
           <ul className="space-y-3 animate-fade-up-delay-2">
             {FEATURES.map((f, i) => (
               <li key={i} className="flex items-start gap-2.5 text-sm text-white/75">
-                <CheckCircle2 className="h-4 w-4 text-blue-300 shrink-0 mt-0.5" />
+                <CheckCircle2 className="h-4 w-4 text-teal-300 shrink-0 mt-0.5" />
                 {f}
               </li>
             ))}
@@ -132,10 +127,10 @@ export default function LoginPage() {
 
           {/* Mobile-only logo */}
           <div className="lg:hidden flex items-center gap-2.5 justify-center mb-8">
-            <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center shadow-lg shadow-primary/30">
-              <Zap className="h-4 w-4 text-white" />
+            <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center shadow-lg shadow-primary/30">
+              <img src="/brand/logo-mark-mono-light.svg" alt="" className="h-5 w-5" />
             </div>
-            <span className="font-bold text-lg">Neuroqaa POS</span>
+            <span className="font-bold text-lg">Speed Tech Solutions</span>
           </div>
 
           {/* Heading */}
@@ -154,49 +149,39 @@ export default function LoginPage() {
             })}
             className="space-y-5"
           >
-            {/* Email */}
-            <div className="space-y-1.5 animate-fade-up-delay-1">
-              <Label htmlFor="email" className="text-sm font-medium">
-                {t("login.emailLabel")}
-              </Label>
-              <div className="relative">
-                <Mail className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                <Input
-                  id="email"
+            <Controller
+              name="email"
+              control={control}
+              render={({ field }) => (
+                <FormTextField
+                  label={t("login.emailLabel")}
+                  name="email"
                   type="email"
-                  autoComplete="email"
                   placeholder={t("login.emailPlaceholder")}
-                  className="ps-9 transition-all duration-200 focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                  {...register("email")}
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={errors.email?.message}
+                  autoComplete="email"
+                  autoFocus
                 />
-              </div>
-              {errors.email && (
-                <p className="text-xs text-destructive flex items-center gap-1">
-                  {errors.email.message}
-                </p>
               )}
-            </div>
+            />
 
-            {/* Password */}
-            <div className="space-y-1.5 animate-fade-up-delay-2">
-              <Label htmlFor="password" className="text-sm font-medium">
-                {t("login.passwordLabel")}
-              </Label>
-              <div className="relative">
-                <Lock className="absolute start-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
-                <Input
-                  id="password"
-                  type="password"
-                  autoComplete="current-password"
+            <Controller
+              name="password"
+              control={control}
+              render={({ field }) => (
+                <FormPasswordField
+                  label={t("login.passwordLabel")}
+                  name="password"
                   placeholder="••••••••"
-                  className="ps-9 transition-all duration-200 focus:ring-2 focus:ring-primary/20 focus:border-primary"
-                  {...register("password")}
+                  value={field.value}
+                  onChange={field.onChange}
+                  error={errors.password?.message}
+                  autoComplete="current-password"
                 />
-              </div>
-              {errors.password && (
-                <p className="text-xs text-destructive">{errors.password.message}</p>
               )}
-            </div>
+            />
 
             {/* Server error */}
             {serverError && (
@@ -209,15 +194,11 @@ export default function LoginPage() {
             <div className="animate-fade-up-delay-3 pt-1">
               <Button
                 type="submit"
-                className="w-full h-10 font-semibold btn-shimmer bg-gradient-to-r from-primary to-indigo-600 hover:from-primary/90 hover:to-indigo-700 transition-all duration-200 shadow-md shadow-primary/25 hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5"
+                className="w-full h-10 font-semibold btn-shimmer bg-gradient-to-r from-primary to-green-600 hover:from-primary/90 hover:to-green-700 transition-all duration-200 shadow-md shadow-primary/25 hover:shadow-lg hover:shadow-primary/30 hover:-translate-y-0.5"
                 disabled={loginMutation.isPending}
+                loading={loginMutation.isPending}
               >
-                {loginMutation.isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 me-2 animate-spin" />
-                    {t("login.signingIn")}
-                  </>
-                ) : (
+                {loginMutation.isPending ? t("login.signingIn") : (
                   <>
                     {t("login.signIn")}
                     <ArrowRight className="h-4 w-4 ms-2" />

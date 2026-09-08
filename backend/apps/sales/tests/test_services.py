@@ -129,7 +129,7 @@ class TestCreateSale:
             payment_method="cash",
             amount_tendered_paise=40000,  # Rs.400 tendered for Rs.350 sale
         )
-        assert sale.payment.change_paise == 5000  # Rs.50 change
+        assert sale.primary_payment.change_paise == 5000  # Rs.50 change
 
     def test_sale_level_discount_applied(self, cashier, product):
         sale = create_sale(
@@ -163,8 +163,8 @@ class TestCreateSale:
             payment_method="card",
             amount_tendered_paise=35000,
         )
-        assert hasattr(sale, "payment")
-        assert sale.payment.method == "card"
+        assert sale.payments.count() == 1
+        assert sale.primary_payment.method == "card"
 
     def test_sale_item_subtotal_correct(self, cashier, product):
         sale = create_sale(

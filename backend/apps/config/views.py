@@ -1,15 +1,11 @@
 from rest_framework import mixins, viewsets
 from rest_framework.permissions import IsAuthenticated
 
+from apps.accounts.activity import log_activity
+from apps.accounts.permissions import IsOwnerOrManager
+
 from .models import Setting
 from .serializers import SettingSerializer
-
-
-class _IsOwnerOrManager(IsAuthenticated):
-    def has_permission(self, request, view):
-        if not super().has_permission(request, view):
-            return False
-        return request.user.role in ("owner", "manager")
 
 
 class SettingViewSet(
@@ -25,5 +21,23 @@ class SettingViewSet(
 
     def get_permissions(self):
         if self.action in ("update", "partial_update"):
-            return [_IsOwnerOrManager()]
+            return [IsOwnerOrManager()]
         return [IsAuthenticated()]
+
+    def perform_update(self, serializer):
+        """
+        Record what changed.
+
+        The tax rate, the credit-limit default and the receipt-sharing kill
+        switch all live here, and until now a change to any of them left no
+        trace at all — Action.SETTING_CHANGED was defined and never written.
+        """
+        before = serializer.instance.value
+        setting = serializer.save()
+        if before != setting.value:
+            log_activity(
+                "setting_changed",
+                user=self.request.user,
+                details={"key": setting.key, "from": before, "to": setting.value},
+                request=self.request,
+            )

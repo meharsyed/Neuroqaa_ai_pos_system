@@ -20,6 +20,10 @@ class User(AbstractUser):
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.CASHIER)
     phone = models.CharField(max_length=20, blank=True)
     is_active = models.BooleanField(default=True)
+    # Set when an owner creates an account or resets a password. The user is
+    # handed a temporary password and made to choose their own on first login,
+    # so the owner never ends up knowing a member of staff's password.
+    must_change_password = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -55,6 +59,16 @@ class ActivityLog(models.Model):
         SHIFT_OPENED   = "shift_opened",    "Shift Opened"
         SHIFT_CLOSED   = "shift_closed",    "Shift Closed"
         CUSTOMER_CREATED = "customer_created", "Customer Created"
+        LOGIN_FAILED   = "login_failed",    "Failed Login Attempt"
+        USER_CREATED   = "user_created",    "Staff Account Created"
+        USER_UPDATED   = "user_updated",    "Staff Account Changed"
+        PASSWORD_RESET = "password_reset",  "Password Reset by Owner"
+        PASSWORD_CHANGED = "password_changed", "Password Changed"
+        TAX_OVERRIDDEN = "tax_overridden",  "Tax Changed on a Bill"
+        PRODUCT_ARCHIVED = "product_archived", "Product Archived"
+        PRODUCT_DELETED = "product_deleted", "Product Deleted"
+        QUOTATION_CREATED = "quotation_created", "Quotation Created"
+        QUOTATION_CONVERTED = "quotation_converted", "Quotation Became a Sale"
 
     user       = models.ForeignKey(
         "accounts.User",

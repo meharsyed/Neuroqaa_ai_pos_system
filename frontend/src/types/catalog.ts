@@ -67,6 +67,8 @@ export interface ProductFilters {
   search?: string;
   category?: number | "";
   is_active?: boolean;
+  /** Include archived products — products that have history and were removed. */
+  include_inactive?: boolean;
   low_stock?: boolean;
   page?: number;
   ordering?: string;

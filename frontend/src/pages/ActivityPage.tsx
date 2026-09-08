@@ -1,3 +1,5 @@
+import { PageContainer } from "@/layouts/components/PageContainer";
+import { PageHeader } from "@/layouts/components/PageHeader";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ShieldCheck, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
@@ -36,15 +38,15 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 const ACTION_COLORS: Record<string, string> = {
-  login:            "bg-blue-100 text-blue-700",
-  sale_created:     "bg-emerald-100 text-emerald-700",
-  sale_voided:      "bg-red-100 text-red-700",
-  return_created:   "bg-orange-100 text-orange-700",
-  stock_in:         "bg-purple-100 text-purple-700",
-  setting_changed:  "bg-amber-100 text-amber-700",
-  shift_opened:     "bg-teal-100 text-teal-700",
-  shift_closed:     "bg-slate-100 text-slate-700",
-  customer_created: "bg-pink-100 text-pink-700",
+  login:            "bg-info-bg text-info",
+  sale_created:     "bg-success-bg text-success",
+  sale_voided:      "bg-destructive-bg text-destructive",
+  return_created:   "bg-warning-bg text-warning",
+  stock_in:         "bg-info-bg text-info",
+  setting_changed:  "bg-warning-bg text-warning",
+  shift_opened:     "bg-accent-soft text-accent",
+  shift_closed:     "bg-n-100 text-n-600",
+  customer_created: "bg-accent-soft text-accent",
 };
 
 function formatDt(iso: string) {
@@ -99,21 +101,13 @@ export default function ActivityPage() {
   const totalPages = data ? Math.ceil(data.count / (data.page_size || 50)) : 1;
 
   return (
-    <div className="min-h-full flex flex-col">
-      {/* Header */}
-      <div className="px-6 pt-6 pb-4 border-b bg-gradient-to-r from-primary/5 to-transparent">
-        <div className="flex items-center gap-2.5">
-          <ShieldCheck className="h-5 w-5 text-primary" />
-          <div>
-            <h1 className="text-xl font-bold">Activity Log</h1>
-            <p className="text-sm text-muted-foreground">
-              Security and operational audit trail — {data?.count ?? "…"} total events
-            </p>
-          </div>
-        </div>
-      </div>
+    <PageContainer>
+      <PageHeader
+        title="Activity Log"
+        subtitle={`Security and operational audit trail — ${data?.count ?? "…"} total events`}
+      />
 
-      <div className="flex-1 p-6 space-y-4">
+      <div className="space-y-4">
 
         {/* Action filter */}
         <div className="flex flex-wrap gap-1.5">
@@ -204,6 +198,6 @@ export default function ActivityPage() {
           </div>
         )}
       </div>
-    </div>
+    </PageContainer>
   );
 }

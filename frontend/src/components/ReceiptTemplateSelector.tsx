@@ -24,7 +24,7 @@ export default function ReceiptTemplateSelector({
       description: "Professional Traditional",
       preview: `
         ═══════════════════════════════════
-          NEUROQAA SANITARY & TILES
+          SPEED TECH SOLUTIONS
         ═══════════════════════════════════
 
         INVOICE #: INV-000001
@@ -37,8 +37,8 @@ export default function ReceiptTemplateSelector({
         ───────────────────────────────────
         Description      Qty  Price   Total
         ───────────────────────────────────
-        Blue Tile         2   1200    2400
-        Red Tile          3   1500    4500
+        4MP Bullet        2   6500   13000
+        NVR 4CH           1  15000   15000
 
         Subtotal:              6900
         Tax:                      0
@@ -63,8 +63,8 @@ export default function ReceiptTemplateSelector({
         ┌─────────────────────────────────┐
         │ Item    │ Qty │ Price │ Total   │
         ├─────────────────────────────────┤
-        │ Tile    │  2  │ 1200  │ 2400    │
-        │ Tile    │  3  │ 1500  │ 4500    │
+        │ Bullet  │  2  │ 6500  │ 13000   │
+        │ NVR 4CH │  1  │ 15000 │ 15000   │
         └─────────────────────────────────┘
 
         Subtotal .......... 6900
@@ -90,16 +90,16 @@ export default function ReceiptTemplateSelector({
         ║ Phone: +92-300-1234567          ║
         ╠═════════════════════════════════╣
         ║                                 ║
-        ║ 1. Blue Ceramic Tile 30×30     ║
-        ║    Qty: 2 × Rs. 1,200 = Rs. 2400║
+        ║ 1. 4MP IR Bullet Camera        ║
+        ║    Qty: 2 × Rs. 6,500 = Rs.13000║
         ║                                 ║
-        ║ 2. Red Floor Tile 20×20        ║
-        ║    Qty: 3 × Rs. 1,500 = Rs. 4500║
+        ║ 2. NVR 4-Channel 1080p         ║
+        ║    Qty: 1 × Rs.15,000 = Rs.15000║
         ║                                 ║
         ╠═════════════════════════════════╣
-        ║ Subtotal: Rs. 6,900             ║
+        ║ Subtotal: Rs. 28,000            ║
         ║ Tax: Rs. 0                      ║
-        ║ TOTAL: Rs. 6,900                ║
+        ║ TOTAL: Rs. 28,000               ║
         ╚═════════════════════════════════╝
       `,
     },
@@ -191,7 +191,7 @@ export default function ReceiptTemplateSelector({
             </div>
 
             {/* Preview */}
-            <div className="bg-slate-50 dark:bg-slate-900 rounded p-3 border border-border mb-3 overflow-hidden">
+            <div className="bg-n-50 dark:bg-n-900 rounded p-3 border border-border mb-3 overflow-hidden">
               <pre className="text-xs font-mono text-muted-foreground whitespace-pre-wrap break-words line-clamp-6">
                 {template.preview}
               </pre>
@@ -200,12 +200,12 @@ export default function ReceiptTemplateSelector({
             {/* Use Case Badge */}
             <div className="flex items-center gap-2">
               {template.id === "classic" && (
-                <span className="inline-block px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-xs rounded font-medium">
+                <span className="inline-block rounded bg-info-bg px-2 py-1 text-xs font-medium text-info">
                   Default • Best for retail
                 </span>
               )}
               {template.id === "modern" && (
-                <span className="inline-block px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-xs rounded font-medium">
+                <span className="inline-block px-2 py-1 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-xs rounded font-medium">
                   Contemporary design
                 </span>
               )}
@@ -215,7 +215,7 @@ export default function ReceiptTemplateSelector({
                 </span>
               )}
               {template.id === "compact" && (
-                <span className="inline-block px-2 py-1 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 text-xs rounded font-medium">
+                <span className="inline-block rounded bg-warning-bg px-2 py-1 text-xs font-medium text-warning">
                   Thermal printer • 80mm
                 </span>
               )}

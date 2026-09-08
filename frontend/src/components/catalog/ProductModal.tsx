@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { ProductImage } from "@/components/ProductImage";
 import { catalogApi, rupeesToPaise } from "@/lib/catalog";
+import { useToast } from "@/lib/use-toast";
 import { cn } from "@/lib/utils";
 import type { Category, Product } from "@/types/catalog";
 
@@ -51,6 +52,7 @@ const UNIT_OPTIONS_LIST = [
 
 export function ProductModal({ open, onOpenChange, product }: Props) {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const isEdit = Boolean(product);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -164,7 +166,8 @@ export function ProductModal({ open, onOpenChange, product }: Props) {
 
       return savedProduct;
     },
-    onSuccess: () => {
+    onSuccess: (saved) => {
+      toast({ title: isEdit ? "Product updated" : "Product created", description: `${saved.name} saved successfully` });
       qc.invalidateQueries({ queryKey: ["products"] });
       qc.invalidateQueries({ queryKey: ["low-stock"] });
       setImageFile(null);
@@ -272,14 +275,14 @@ export function ProductModal({ open, onOpenChange, product }: Props) {
           {/* Name */}
           <div className="col-span-2 space-y-1">
             <Label htmlFor="name">Product Name *</Label>
-            <Input id="name" placeholder="e.g. Blue Ceramic Tile 30×30" {...register("name")} />
+            <Input id="name" placeholder="e.g. 4MP IR Bullet Camera" {...register("name")} />
             {errors.name && <p className="text-xs text-destructive">{errors.name.message}</p>}
           </div>
 
           {/* SKU */}
           <div className="space-y-1">
             <Label htmlFor="sku">SKU *</Label>
-            <Input id="sku" placeholder="e.g. TILE-001" {...register("sku")} />
+            <Input id="sku" placeholder="e.g. BUL-4MP-IR" {...register("sku")} />
             {errors.sku && <p className="text-xs text-destructive">{errors.sku.message}</p>}
           </div>
 
@@ -310,14 +313,14 @@ export function ProductModal({ open, onOpenChange, product }: Props) {
           {/* Cost Price */}
           <div className="space-y-1">
             <Label htmlFor="cost_price">Cost Price (Rs) *</Label>
-            <Input id="cost_price" type="number" step="0.01" min="0" placeholder="250.00" {...register("cost_price")} />
+            <Input id="cost_price" type="number" step="0.01" min="0" placeholder="4500.00" {...register("cost_price")} />
             {errors.cost_price && <p className="text-xs text-destructive">{errors.cost_price.message}</p>}
           </div>
 
           {/* Sell Price */}
           <div className="space-y-1">
             <Label htmlFor="sell_price">Sell Price (Rs) *</Label>
-            <Input id="sell_price" type="number" step="0.01" min="0" placeholder="350.00" {...register("sell_price")} />
+            <Input id="sell_price" type="number" step="0.01" min="0" placeholder="6500.00" {...register("sell_price")} />
             {errors.sell_price && <p className="text-xs text-destructive">{errors.sell_price.message}</p>}
           </div>
 
@@ -336,7 +339,7 @@ export function ProductModal({ open, onOpenChange, product }: Props) {
           {/* Description */}
           <div className="col-span-2 space-y-1">
             <Label htmlFor="description">Description</Label>
-            <Textarea id="description" rows={2} placeholder="Optional product notes..." {...register("description")} />
+            <Textarea id="description" rows={2} placeholder="Optional — lens, resolution, warranty, anything the counter should know" {...register("description")} />
           </div>
 
           {mutation.isError && (

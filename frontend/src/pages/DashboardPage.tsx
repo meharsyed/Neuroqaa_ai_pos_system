@@ -1,27 +1,38 @@
 import { Link } from "react-router-dom";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Package, AlertTriangle, TrendingUp, Receipt,
-  ArrowRight, CheckCircle2, XCircle,
+  ArrowRight, CheckCircle2, XCircle, Plus,
 } from "lucide-react";
-import { useAuthStore } from "@/store/authStore";
 import { catalogApi, paiseToRupees } from "@/lib/catalog";
 import { salesApi } from "@/lib/sales";
 import { reportsApi } from "@/lib/reports";
 import { shiftsApi } from "@/lib/shifts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Money } from "@/components/ui/money";
+import { DateTime } from "@/components/ui/date-display";
+import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useTranslation } from "@/lib/useTranslation";
+import { PageContainer } from "@/layouts/components/PageContainer";
+import { PageHeader } from "@/layouts/components/PageHeader";
+import { StockInModal } from "@/components/catalog/StockInModal";
+import type { Product } from "@/types/catalog";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function formatDt(iso: string) {
-  return new Date(iso).toLocaleString("en-PK", {
-    month: "short", day: "numeric",
-    hour: "2-digit", minute: "2-digit",
-  });
+function getLast7Days() {
+  const end = new Date();
+  const start = new Date(end);
+  start.setDate(start.getDate() - 6);
+  return {
+    start: start.toISOString().slice(0, 10),
+    end: end.toISOString().slice(0, 10),
+  };
 }
 
 function StatCard({
@@ -44,33 +55,33 @@ function StatCard({
   const colorMap: Record<string, { border: string; bg: string; icon: string; gradient: string }> = {
     navy: {
       border: "border-teal-600",
-      bg: "bg-gradient-to-br from-teal-50 to-cyan-25",
+      bg: "bg-gradient-to-br from-teal-50 to-teal-100",
       icon: "text-teal-600",
       gradient: "from-teal-600 to-teal-500",
     },
     orange: {
-      border: "border-orange-500",
-      bg: "bg-gradient-to-br from-orange-50 to-red-25",
-      icon: "text-orange-500",
-      gradient: "from-orange-500 to-red-500",
+      border: "border-warning",
+      bg: "bg-gradient-to-br from-warning-bg to-warning-bg",
+      icon: "text-warning",
+      gradient: "from-warning to-warning",
     },
     teal: {
-      border: "border-cyan-500",
-      bg: "bg-gradient-to-br from-cyan-50 to-teal-25",
-      icon: "text-cyan-500",
-      gradient: "from-cyan-500 to-teal-500",
+      border: "border-teal-500",
+      bg: "bg-gradient-to-br from-teal-50 to-teal-100",
+      icon: "text-teal-500",
+      gradient: "from-teal-500 to-teal-400",
     },
     gray: {
-      border: "border-slate-500",
-      bg: "bg-gradient-to-br from-slate-50 to-gray-25",
-      icon: "text-slate-500",
-      gradient: "from-slate-600 to-slate-500",
+      border: "border-n-400",
+      bg: "bg-gradient-to-br from-n-50 to-n-100",
+      icon: "text-n-500",
+      gradient: "from-n-600 to-n-500",
     },
     red: {
-      border: "border-red-600",
-      bg: "bg-gradient-to-br from-red-50 to-rose-25",
-      icon: "text-red-600",
-      gradient: "from-red-600 to-red-500",
+      border: "border-destructive",
+      bg: "bg-gradient-to-br from-destructive-bg to-danger-bg",
+      icon: "text-destructive",
+      gradient: "from-destructive to-danger",
     },
   };
 
@@ -91,7 +102,7 @@ function StatCard({
           {value}
         </p>
         {trend && (
-          <div className={`text-sm font-bold flex items-center gap-1 ${trend.isPositive ? "stat-trend-up text-sports-emerald" : "stat-trend-down text-sports-orange"}`}>
+          <div className={`text-sm font-bold flex items-center gap-1 ${trend.isPositive ? "text-success" : "text-warning"}`}>
             {trend.isPositive ? "↑" : "↓"} {Math.abs(trend.value)}% {trend.isPositive ? "vs yesterday" : "vs yesterday"}
           </div>
         )}
@@ -104,9 +115,9 @@ function StatCard({
 }
 
 export default function DashboardPage() {
-  const user = useAuthStore((s) => s.user);
   const todayStr = today();
-  const { t, language } = useTranslation();
+  const { t } = useTranslation();
+  const [stockInProduct, setStockInProduct] = useState<Product | null>(null);
 
   const { data: lowStockProducts = [] } = useQuery({
     queryKey: ["low-stock"],
@@ -126,7 +137,14 @@ export default function DashboardPage() {
     staleTime: 60_000,
   });
 
-  const { data: recentSalesData } = useQuery({
+  const dateRange = getLast7Days();
+  const { data: sevenDayReport } = useQuery({
+    queryKey: ["report-audit", dateRange.start, dateRange.end],
+    queryFn: () => reportsApi.audit(dateRange.start, dateRange.end),
+    staleTime: 60_000,
+  });
+
+  const { data: recentSalesData, isLoading: recentSalesLoading } = useQuery({
     queryKey: ["sales", { page: 1 }],
     queryFn: () => salesApi.list({ page: 1 }),
     staleTime: 30_000,
@@ -142,48 +160,14 @@ export default function DashboardPage() {
   const totalProducts = productsData?.count ?? 0;
   const recentSales = recentSalesData?.results?.slice(0, 6) ?? [];
 
-  const greeting = () => {
-    const h = new Date().getHours();
-    if (h < 12) return t("dashboard.greetingMorning");
-    if (h < 17) return t("dashboard.greetingAfternoon");
-    return t("dashboard.greetingEvening");
-  };
-
-  const dateLabel = new Date().toLocaleDateString(language === "ur" ? "ur-PK" : "en-PK", {
-    weekday: "long", year: "numeric", month: "long", day: "numeric",
-  });
-
   return (
-    <div className="min-h-full flex flex-col">
-      {/* Page header — Speed Tech Solutions Professional Compact */}
-      <div className="px-6 py-3.5 border-b bg-white animate-fade-up border-slate-200">
-        <div className="flex items-center justify-between gap-4">
-          {/* Left: Shop branding (compact) */}
-          <div className="min-w-0 flex-shrink-0">
-            <h1 className="text-lg font-bold text-slate-900 leading-tight">
-              Speed Tech Solutions
-            </h1>
-            <p className="text-xs text-slate-500 mt-0.5">Enterprise Security & Surveillance</p>
-          </div>
+    <PageContainer>
+      <PageHeader
+        title="Dashboard"
+        subtitle={`${totalProducts} products · ${lowStockProducts.length} low stock`}
+      />
 
-          {/* Right: User info + date */}
-          <div className="flex items-center gap-4 min-w-0">
-            <div className="text-right">
-              <p className="text-sm font-semibold text-slate-900 leading-tight">
-                {greeting()}{user?.first_name ? ` ${user.first_name}` : ""}
-              </p>
-              <p className="text-xs text-slate-500 capitalize mt-0.5">{user?.role} Account</p>
-            </div>
-            <div className="h-10 w-px bg-slate-200 shrink-0" />
-            <div className="text-right min-w-max">
-              <p className="text-sm font-semibold text-slate-900">{dateLabel}</p>
-              <p className="text-xs text-slate-500 mt-0.5">{new Date().toLocaleTimeString(language === "ur" ? "ur-PK" : "en-PK", { hour: "2-digit", minute: "2-digit" })}</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex-1 p-6 space-y-6">
+      <div className="space-y-6">
 
         {/* Stats */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 animate-fade-up-delay-1">
@@ -192,7 +176,6 @@ export default function DashboardPage() {
             label={t("dashboard.statTotalProducts")}
             value={totalProducts.toLocaleString()}
             sub={<Link to="/products" className="hover:underline text-primary">{t("dashboard.viewCatalogue")}</Link>}
-            trend={{ value: 8, isPositive: true }}
             accent="navy"
             to="/products"
           />
@@ -202,7 +185,7 @@ export default function DashboardPage() {
             value={lowStockProducts.length}
             sub={
               lowStockProducts.length > 0
-                ? <Link to="/products" className="hover:underline text-orange-600">{t("dashboard.viewItems")}</Link>
+                ? <Link to="/products" className="hover:underline text-warning">{t("dashboard.viewItems")}</Link>
                 : t("dashboard.allLevelsOk")
             }
             accent="red"
@@ -220,7 +203,6 @@ export default function DashboardPage() {
                 ? t("dashboard.discountsGiven", { amount: paiseToRupees(todaySummary.total_discount_paise) })
                 : t("dashboard.noDiscountsToday")
             }
-            trend={{ value: 15, isPositive: true }}
             accent="teal"
           />
           <StatCard
@@ -234,14 +216,13 @@ export default function DashboardPage() {
                     .join(" · ")
                 : t("dashboard.noSalesYet")
             }
-            trend={{ value: 3, isPositive: true }}
             accent="gray"
           />
         </div>
 
         {/* Quick actions */}
         <div className="animate-fade-up-delay-2">
-          <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-700 mb-3">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">
             {t("dashboard.quickActions")}
           </h2>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -250,31 +231,31 @@ export default function DashboardPage() {
                 to: "/checkout",
                 label: t("dashboard.newSale"),
                 desc: t("dashboard.openCheckout"),
-                cls: "quick-action-navy",
+                bg: "bg-teal-600",
               },
               {
                 to: "/products",
                 label: t("dashboard.addStock"),
                 desc: t("dashboard.stockInManage"),
-                cls: "quick-action-orange",
+                bg: "bg-warning",
               },
               {
                 to: "/audit",
                 label: t("dashboard.reportsLabel"),
                 desc: t("dashboard.salesAndInventory"),
-                cls: "quick-action-teal",
+                bg: "bg-teal-500",
               },
               {
                 to: "/shifts",
                 label: t("dashboard.shiftsLabel"),
                 desc: currentShift ? t("dashboard.closeCurrentShift") : t("dashboard.openNewShift"),
-                cls: "quick-action-gray",
+                bg: "bg-n-600",
               },
-            ].map(({ to, label, desc, cls }) => (
+            ].map(({ to, label, desc, bg }) => (
               <Link
                 key={to}
                 to={to}
-                className={`${cls} text-white rounded-lg p-4 transition-all shadow-md hover:shadow-xl hover:scale-105 flex flex-col items-start justify-between min-h-24`}
+                className={`${bg} text-white rounded-lg p-4 transition-all shadow-md hover:shadow-xl hover:scale-105 flex flex-col items-start justify-between min-h-24`}
               >
                 <div className="min-w-0 flex-1 w-full">
                   <p className="font-bold text-sm leading-tight">{label}</p>
@@ -285,23 +266,73 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* 7-day revenue chart */}
+        {sevenDayReport && (
+          <div className="border rounded-xl overflow-hidden shadow-sm bg-white p-4 animate-fade-up-delay-2">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="font-bold text-sm text-foreground">7-Day Revenue Trend</h2>
+                <p className="text-xs text-muted-foreground mt-1">{dateRange.start} to {dateRange.end}</p>
+              </div>
+              <div className="text-right">
+                <div className="text-2xl font-bold text-teal-700">
+                  <Money paise={sevenDayReport.total_revenue_paise} />
+                </div>
+                <p className="text-xs text-muted-foreground">{sevenDayReport.transaction_count} transactions</p>
+              </div>
+            </div>
+
+            {/* Sparkline bars */}
+            <div className="flex items-end justify-between gap-1.5 h-16 bg-muted/20 p-3 rounded-lg">
+              {sevenDayReport.daily_breakdown && sevenDayReport.daily_breakdown.length > 0 ? (
+                sevenDayReport.daily_breakdown.map((day) => {
+                  const maxRevenue = Math.max(...sevenDayReport.daily_breakdown.map((d) => d.revenue_paise), 1);
+                  const height = (day.revenue_paise / maxRevenue) * 100;
+                  return (
+                    <div
+                      key={day.date}
+                      className="flex-1 bg-teal-400/60 hover:bg-teal-500 rounded-sm transition-colors cursor-pointer"
+                      style={{ height: `${Math.max(height, 5)}%` }}
+                      title={`${day.date}: Rs ${(day.revenue_paise / 100).toLocaleString("en-PK", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                    />
+                  );
+                })
+              ) : (
+                Array(7).fill(0).map((_, i) => (
+                  <div key={i} className="flex-1 bg-muted rounded-sm" />
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Main grid: Recent sales + Shift status */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-fade-up-delay-3">
 
           {/* Recent sales — takes 2 of 3 columns */}
           <div className="lg:col-span-2 border rounded-xl overflow-hidden shadow-sm bg-white">
-            <div className="px-4 py-3 border-b bg-gradient-to-r from-teal-100/40 to-slate-100/40 flex items-center justify-between">
+            <div className="px-4 py-3 border-b bg-gradient-to-r from-teal-100/40 to-n-100/40 flex items-center justify-between">
               <h2 className="font-bold text-sm text-teal-900">{t("dashboard.recentSales")}</h2>
               <Link to="/bills" className="text-xs text-teal-700 hover:underline flex items-center gap-1 font-medium">
                 {t("dashboard.viewAll")} <ArrowRight className="h-3 w-3" />
               </Link>
             </div>
-            {recentSales.length === 0 ? (
-              <div className="px-4 py-10 text-center text-sm text-muted-foreground">
-                {t("dashboard.noSalesRecordedPrefix")}{" "}
-                <Link to="/checkout" className="text-primary hover:underline font-medium">{t("checkout.checkoutTitle")}</Link>{" "}
-                {t("dashboard.noSalesRecordedSuffix")}
+            {recentSalesLoading ? (
+              <div className="divide-y">
+                {[1, 2, 3].map((i) => (
+                  <div key={i} className="px-4 py-3 space-y-2">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-3 w-48" />
+                  </div>
+                ))}
               </div>
+            ) : recentSales.length === 0 ? (
+              <EmptyState
+                icon={Receipt}
+                title={t("dashboard.noSalesRecorded")}
+                description={t("dashboard.noSalesRecordedPrefix")}
+                action={<Link to="/checkout" className="text-primary hover:underline font-medium">{t("checkout.checkoutTitle")}</Link>}
+              />
             ) : (
               <div className="divide-y">
                 {recentSales.map((sale) => (
@@ -315,31 +346,30 @@ export default function DashboardPage() {
                             {sale.status === "completed" ? (
                               <CheckCircle2 className="h-5 w-5 text-teal-600" />
                             ) : (
-                              <XCircle className="h-5 w-5 text-red-600" />
+                              <XCircle className="h-5 w-5 text-destructive" />
                             )}
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="font-mono text-xs font-bold text-teal-700">{sale.sale_number}</p>
-                            <p className="text-xs text-slate-700 mt-0.5">
+                            <p className="text-xs text-muted-foreground mt-0.5">
                               {sale.customer_name || "Walk-in"} • {sale.cashier_name}
                             </p>
                           </div>
                         </div>
                         <Badge
-                          variant={sale.status === "completed" ? "default" : "destructive"}
-                          className={sale.status === "completed" ? "bg-teal-600" : ""}
+                          variant={sale.status === "completed" ? "success" : "danger"}
                         >
                           {sale.status === "completed" ? "✓" : "✗"} {sale.status}
                         </Badge>
                       </div>
                       <div className="flex items-center justify-between">
-                        <div className="text-xs text-slate-700">
-                          {sale.payment?.method?.toUpperCase() || "Cash"} • {formatDt(sale.created_at)}
+                        <div className="text-xs text-muted-foreground">
+                          {sale.payment?.method?.toUpperCase() || "Cash"} • <DateTime value={new Date(sale.created_at)} format="short" />
                         </div>
                         <div className="text-right">
-                          <p className="font-bold text-teal-700">{paiseToRupees(sale.total_paise)}</p>
+                          <Money paise={sale.total_paise} className="font-bold text-teal-700 text-sm" />
                           {sale.discount_paise > 0 && (
-                            <p className="text-xs text-orange-600">-{paiseToRupees(sale.discount_paise)}</p>
+                            <div className="text-xs text-warning">-<Money paise={sale.discount_paise} /></div>
                           )}
                         </div>
                       </div>
@@ -350,8 +380,8 @@ export default function DashboardPage() {
           </div>
 
           {/* Shift status widget */}
-          <div className="border rounded-xl overflow-hidden shadow-sm flex flex-col bg-gradient-to-br from-teal-50/40 to-slate-50/40">
-            <div className="px-4 py-3 border-b bg-gradient-to-r from-teal-100/40 to-slate-100/40 flex items-center justify-between">
+          <div className="border rounded-xl overflow-hidden shadow-sm flex flex-col bg-gradient-to-br from-teal-50/40 to-n-50/40">
+            <div className="px-4 py-3 border-b bg-gradient-to-r from-teal-100/40 to-n-100/40 flex items-center justify-between">
               <h2 className="font-semibold text-sm text-teal-900">{t("dashboard.shiftStatus")}</h2>
               <Link to="/shifts" className="text-xs text-primary hover:underline">
                 {t("dashboard.manage")}
@@ -361,23 +391,21 @@ export default function DashboardPage() {
               {currentShift ? (
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span className="text-sm font-bold text-emerald-600">{t("dashboard.shiftOpen")}</span>
+                    <span className="h-2 w-2 rounded-full bg-teal-500 animate-pulse" />
+                    <span className="text-sm font-bold text-teal-600">{t("dashboard.shiftOpen")}</span>
                   </div>
                   <div className="space-y-2.5">
                     <div className="text-xs">
-                      <p className="text-slate-700">{t("dashboard.shiftHash")} <span className="font-mono font-semibold text-slate-900">#{currentShift.id}</span></p>
-                      <p className="text-slate-700 mt-1">{t("dashboard.opened")}{" "}
-                        {new Date(currentShift.opened_at).toLocaleTimeString(language === "ur" ? "ur-PK" : "en-PK", {
-                          hour: "2-digit", minute: "2-digit",
-                        })}
+                      <p className="text-muted-foreground">{t("dashboard.shiftHash")} <span className="font-mono font-semibold text-foreground">#{currentShift.id}</span></p>
+                      <p className="text-muted-foreground mt-1">
+                        {t("dashboard.opened")} <DateTime value={new Date(currentShift.opened_at)} format="short" />
                       </p>
-                      <p className="text-slate-700 mt-1">{t("dashboard.float")} <span className="font-bold text-teal-700">{paiseToRupees(currentShift.opening_float_paise)}</span></p>
+                      <p className="text-muted-foreground mt-1">{t("dashboard.float")} <span className="font-bold text-teal-700">{paiseToRupees(currentShift.opening_float_paise)}</span></p>
                     </div>
                     {/* Performance KPI */}
                     <div className="bg-white/70 rounded-lg p-2.5 space-y-1.5 border border-teal-100">
                       <div className="flex justify-between text-xs">
-                        <span className="font-medium text-slate-700">Sales Today</span>
+                        <span className="font-medium text-muted-foreground">Sales Today</span>
                         <span className="font-bold text-teal-700">₹{(todaySummary?.total_revenue_paise || 0) / 100}</span>
                       </div>
                       <div className="progress-bar-container">
@@ -386,7 +414,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
                   <Link to="/shifts">
-                    <Button size="sm" className="w-full mt-2 bg-gradient-to-r from-teal-700 to-slate-600 hover:from-teal-800 hover:to-slate-700 text-white">
+                    <Button size="sm" className="w-full mt-2 bg-gradient-to-r from-teal-600 to-green-600 hover:from-teal-700 hover:to-green-700 text-white">
                       {t("dashboard.closeShift")}
                     </Button>
                   </Link>
@@ -394,14 +422,14 @@ export default function DashboardPage() {
               ) : (
                 <div className="space-y-3">
                   <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-gray-300" />
-                    <span className="text-sm font-medium text-slate-700">{t("dashboard.noOpenShift")}</span>
+                    <span className="h-2 w-2 rounded-full bg-n-300" />
+                    <span className="text-sm font-medium text-muted-foreground">{t("dashboard.noOpenShift")}</span>
                   </div>
-                  <p className="text-xs text-slate-600">
+                  <p className="text-xs text-muted-foreground">
                     {t("dashboard.openShiftHint")}
                   </p>
                   <Link to="/shifts">
-                    <Button size="sm" className="w-full mt-2 bg-gradient-to-r from-teal-700 to-slate-600 hover:from-teal-800 hover:to-slate-700 text-white">
+                    <Button size="sm" className="w-full mt-2 bg-gradient-to-r from-teal-600 to-green-600 hover:from-teal-700 hover:to-green-700 text-white">
                       {t("dashboard.openShift")}
                     </Button>
                   </Link>
@@ -414,14 +442,14 @@ export default function DashboardPage() {
         {/* Low stock alert */}
         {lowStockProducts.length > 0 && (
           <div className="border rounded-xl overflow-hidden shadow-sm low-stock-critical">
-            <div className="px-4 py-3 border-b bg-gradient-to-r from-red-100/50 to-orange-100/40 flex items-center justify-between">
+            <div className="px-4 py-3 border-b bg-gradient-to-r from-destructive-bg/50 to-warning-bg/40 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="h-5 w-5 text-red-600 animate-pulse" />
-                <h2 className="font-bold text-sm text-red-800">{t("dashboard.lowStockAlert")}</h2>
-                <Badge variant="destructive" className="bg-red-600">{lowStockProducts.length}</Badge>
+                <AlertTriangle className="h-5 w-5 text-destructive animate-pulse" />
+                <h2 className="font-bold text-sm text-destructive">{t("dashboard.lowStockAlert")}</h2>
+                <Badge variant="danger">{lowStockProducts.length}</Badge>
               </div>
-              <Button variant="outline" size="sm" asChild className="border-red-300 hover:bg-red-50">
-                <Link to="/products" className="text-red-700 font-medium">{t("dashboard.manageStock")}</Link>
+              <Button variant="outline" size="sm" asChild className="border-destructive/40 hover:bg-destructive-bg">
+                <Link to="/products" className="text-destructive font-medium">{t("dashboard.manageStock")}</Link>
               </Button>
             </div>
             <div className="divide-y">
@@ -434,25 +462,36 @@ export default function DashboardPage() {
                 return (
                   <div
                     key={p.id}
-                    className={`px-4 py-3 text-sm hover:bg-red-50/40 transition-colors ${isCritical ? 'bg-red-50/20' : 'bg-orange-50/10'}`}
+                    className={`px-4 py-3 text-sm hover:bg-destructive-bg/40 transition-colors ${isCritical ? 'bg-destructive-bg/20' : 'bg-warning-bg/10'}`}
                   >
                     <div className="flex items-center justify-between mb-2">
-                      <div className="min-w-0">
-                        <span className="font-mono text-xs text-slate-600 me-2">{p.sku}</span>
-                        <span className="font-semibold text-slate-900">{p.name}</span>
+                      <div className="min-w-0 flex-1">
+                        <span className="font-mono text-xs text-muted-foreground me-2">{p.sku}</span>
+                        <span className="font-semibold text-foreground">{p.name}</span>
                       </div>
-                      <Badge className={isCritical ? "bg-red-600" : "bg-orange-500"}>
-                        {isCritical ? "CRITICAL" : "LOW"}
-                      </Badge>
+                      <div className="flex items-center gap-2 ms-2 shrink-0">
+                        <Badge variant={isCritical ? "danger" : "warning"}>
+                          {isCritical ? "CRITICAL" : "LOW"}
+                        </Badge>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setStockInProduct(p)}
+                          className="h-7 gap-1 text-xs"
+                        >
+                          <Plus className="h-3 w-3" />
+                          Stock
+                        </Button>
+                      </div>
                     </div>
                     <div className="progress-bar-container mb-1">
                       <div className="progress-bar-fill" style={{ width: `${stockPercent}%` }} />
                     </div>
                     <div className="flex justify-between text-xs">
-                      <span className="text-slate-700">
+                      <span className="text-muted-foreground">
                         {stockQty} {p.unit} / {minThreshold} {t("dashboard.min")}
                       </span>
-                      <span className={isCritical ? "text-red-600 font-bold" : "text-orange-600 font-bold"}>
+                      <span className={isCritical ? "text-destructive font-bold" : "text-warning font-bold"}>
                         {stockPercent.toFixed(0)}%
                       </span>
                     </div>
@@ -460,9 +499,9 @@ export default function DashboardPage() {
                 );
               })}
               {lowStockProducts.length > 6 && (
-                <div className="px-4 py-2 text-xs text-muted-foreground text-center bg-amber-50/30">
+                <div className="px-4 py-2 text-xs text-muted-foreground text-center bg-warning-bg/30">
                   +{lowStockProducts.length - 6} {t("dashboard.more")}{" "}
-                  <Link to="/products" className="text-red-600 hover:underline font-medium">{t("dashboard.viewAllLower")}</Link>
+                  <Link to="/products" className="text-destructive hover:underline font-medium">{t("dashboard.viewAllLower")}</Link>
                 </div>
               )}
             </div>
@@ -471,11 +510,11 @@ export default function DashboardPage() {
 
       </div>
 
-      {/* Page footer */}
-      <footer className="px-6 py-3 border-t text-center text-xs text-slate-600 bg-slate-50">
-        {t("dashboard.footerBuiltBy")}{" "}
-        <span className="font-semibold text-slate-800">Neuroqaa.ai</span>
-      </footer>
-    </div>
+      <StockInModal
+        open={!!stockInProduct}
+        onOpenChange={(open) => !open && setStockInProduct(null)}
+        product={stockInProduct}
+      />
+    </PageContainer>
   );
 }

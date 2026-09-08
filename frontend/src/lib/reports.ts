@@ -1,4 +1,6 @@
 import { apiClient } from "./axios";
+import { blobErrorMessage } from "./pdf";
+import { toast } from "./use-toast";
 import type { AuditReport, DailySummary, InventoryValuation } from "@/types/config";
 
 export const reportsApi = {
@@ -69,7 +71,24 @@ export function openReceiptPdf(saleId: number, template: ReceiptTemplate = "ther
     })
     .then((r) => {
       const blobUrl = URL.createObjectURL(r.data);
-      window.open(blobUrl, "_blank");
+      const win = window.open(blobUrl, "_blank");
+      if (!win) {
+        toast({
+          title: "Popup blocked",
+          description: "Allow popups for this site to view the receipt.",
+          variant: "error",
+        });
+      }
+    })
+    .catch(async (err) => {
+      // responseType "blob" means the error body is a Blob, so reading
+      // err.response.data.detail gave undefined and the cashier saw
+      // "Request failed with status code 401".
+      toast({
+        title: "Could not open the receipt",
+        description: await blobErrorMessage(err),
+        variant: "error",
+      });
     });
 }
 

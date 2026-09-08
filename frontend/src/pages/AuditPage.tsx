@@ -1,3 +1,5 @@
+import { PageContainer } from "@/layouts/components/PageContainer";
+import { PageHeader } from "@/layouts/components/PageHeader";
 import { useRef, useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -6,10 +8,13 @@ import {
   FileSpreadsheet, ListChecks, LayoutList,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { paiseToRupees } from "@/lib/catalog";
+import { Money } from "@/components/ui/money";
+import { DatePicker } from "@/components/ui/date-picker";
+import { DateTime } from "@/components/ui/date-display";
 import { reportsApi, downloadAuditPdf, downloadAuditCsv } from "@/lib/reports";
 import { useAuthStore } from "@/store/authStore";
+import { can } from "@/lib/permissions";
+import { NotAllowed } from "@/components/RequireRole";
 import type { AuditReport } from "@/types/config";
 
 // ── Small dropdown menu (button + popover with options) ─────────────────────
@@ -98,21 +103,23 @@ function MetricCard({
   label: string;
   value: React.ReactNode;
   sub?: React.ReactNode;
-  accent?: "blue" | "green" | "red" | "amber" | "purple";
+  // Named by meaning rather than by colour, so a card cannot end up green in
+  // light mode and unreadable in dark. The old map also referenced
+  // `danger-500` and `danger-50`, which this project's Tailwind config does
+  // not define at all — those cards had no accent at all and nobody noticed.
+  accent?: "info" | "success" | "destructive" | "warning";
 }) {
   const border = {
-    blue:   "border-l-blue-500 bg-blue-50/40",
-    green:  "border-l-emerald-500 bg-emerald-50/40",
-    red:    "border-l-red-500 bg-red-50/40",
-    amber:  "border-l-amber-500 bg-amber-50/40",
-    purple: "border-l-purple-500 bg-purple-50/40",
+    info:        "border-l-info bg-info-bg/40",
+    success:     "border-l-success bg-success-bg/40",
+    destructive: "border-l-destructive bg-destructive-bg/40",
+    warning:     "border-l-warning bg-warning-bg/40",
   };
   const icon_color = {
-    blue:   "text-blue-500",
-    green:  "text-emerald-500",
-    red:    "text-red-500",
-    amber:  "text-amber-500",
-    purple: "text-purple-500",
+    info:        "text-info",
+    success:     "text-success",
+    destructive: "text-destructive",
+    warning:     "text-warning",
   };
   return (
     <div className={`border rounded-xl p-4 border-l-4 shadow-sm ${accent ? border[accent] : "border-l-border"}`}>
@@ -137,25 +144,18 @@ export default function AuditPage() {
   const [downloadingCsv, setDownloadingCsv] = useState(false);
   const [downloadingPdf, setDownloadingPdf] = useState(false);
 
-  // Access guard
-  if (user?.role !== "owner" && user?.role !== "manager") {
-    return (
-      <div className="min-h-full flex items-center justify-center p-8">
-        <div className="text-center">
-          <FileBarChart className="h-12 w-12 mx-auto mb-3 opacity-20" />
-          <p className="font-semibold text-muted-foreground">Access restricted</p>
-          <p className="text-xs text-muted-foreground/60 mt-1">
-            Only owners and managers can view audit reports.
-          </p>
-        </div>
-      </div>
-    );
-  }
+  // The access check is a value, not an early return. Returning before the
+  // useQuery below meant this component ran a different number of hooks
+  // depending on who was signed in — React's cardinal rule — and would have
+  // crashed with "rendered more hooks than during the previous render" the
+  // moment a role changed while the page was mounted. The guarded view is
+  // returned from the JSX instead, after every hook has run.
+  const allowed = can.viewReports(user);
 
   const { data, isLoading, isError } = useQuery<AuditReport>({
     queryKey: ["audit", queryRange, detailed],
     queryFn: () => reportsApi.audit(queryRange!.start, queryRange!.end, detailed),
-    enabled: queryRange !== null,
+    enabled: allowed && queryRange !== null,
     staleTime: 60_000,
   });
 
@@ -186,21 +186,21 @@ export default function AuditPage() {
 
   const marginPositive = (data?.gross_margin_pct ?? 0) >= 0;
 
+  if (!allowed) {
+    return (
+      <PageContainer>
+        <NotAllowed what="Audit reports" />
+      </PageContainer>
+    );
+  }
+
   return (
-    <div className="min-h-full flex flex-col">
-      {/* Header */}
-      <div className="px-6 pt-6 pb-4 border-b bg-gradient-to-r from-primary/5 to-transparent">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <FileBarChart className="h-5 w-5 text-primary" />
-            <div>
-              <h1 className="text-xl font-bold">Audit Reports</h1>
-              <p className="text-sm text-muted-foreground">
-                Profit &amp; Loss analysis with COGS breakdown — Owner/Manager only
-              </p>
-            </div>
-          </div>
-          {data && (
+    <PageContainer>
+      <PageHeader
+        title="Audit Reports"
+        subtitle="Profit & Loss analysis with COGS breakdown — Owner/Manager only"
+        actions={
+          data && (
             <DropdownMenu
               label={downloadingCsv || downloadingPdf ? "Preparing…" : "Download"}
               icon={downloadingCsv || downloadingPdf ? Loader2 : Download}
@@ -220,11 +220,11 @@ export default function AuditPage() {
                 },
               ]}
             />
-          )}
-        </div>
-      </div>
+          )
+        }
+      />
 
-      <div className="flex-1 p-6 space-y-6">
+      <div className="space-y-6">
 
         {/* Date range selector */}
         <div className="flex flex-wrap items-end gap-3 rounded-xl border bg-muted/20 px-5 py-4">
@@ -232,10 +232,9 @@ export default function AuditPage() {
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide block mb-1.5">
               From
             </label>
-            <Input
-              type="date"
+            <DatePicker
               value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
+              onChange={setStartDate}
               className="w-40"
             />
           </div>
@@ -243,10 +242,9 @@ export default function AuditPage() {
             <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide block mb-1.5">
               To
             </label>
-            <Input
-              type="date"
+            <DatePicker
               value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
+              onChange={setEndDate}
               className="w-40"
             />
           </div>
@@ -318,7 +316,7 @@ export default function AuditPage() {
                 <span className="font-semibold text-foreground">{data.period_end}</span>
               </span>
               <span className="text-xs text-muted-foreground">
-                Generated {new Date(data.generated_at).toLocaleString("en-PK")}
+                Generated <DateTime value={data.generated_at} />
               </span>
             </div>
 
@@ -329,35 +327,41 @@ export default function AuditPage() {
                 label="Transactions"
                 value={data.transaction_count.toLocaleString()}
                 sub="Completed sales"
-                accent="blue"
+                accent="info"
               />
               <MetricCard
                 icon={Wallet}
                 label="Revenue"
-                value={paiseToRupees(data.total_revenue_paise)}
-                sub={`Discounts: ${paiseToRupees(data.total_discount_paise)}`}
-                accent="blue"
+                value={<Money paise={data.total_revenue_paise} />}
+                sub={<>Discounts: <Money paise={data.total_discount_paise} /></>}
+                accent="info"
               />
               <MetricCard
                 icon={ShoppingBag}
                 label="COGS"
-                value={paiseToRupees(data.total_cogs_paise)}
+                value={<Money paise={data.total_cogs_paise} />}
                 sub={`${pct(data.total_cogs_paise, data.total_revenue_paise)} of revenue`}
-                accent="amber"
+                accent="warning"
               />
               <MetricCard
                 icon={marginPositive ? TrendingUp : TrendingDown}
                 label="Gross Profit"
-                value={paiseToRupees(data.gross_profit_paise)}
+                value={<Money paise={data.gross_profit_paise} />}
                 sub={`After COGS deduction`}
-                accent={marginPositive ? "green" : "red"}
+                accent={marginPositive ? "success" : "destructive"}
               />
               <MetricCard
                 icon={Percent}
                 label="Gross Margin"
                 value={`${data.gross_margin_pct}%`}
                 sub="Profit / Revenue"
-                accent={data.gross_margin_pct >= 30 ? "green" : data.gross_margin_pct >= 10 ? "amber" : "red"}
+                accent={
+                  data.gross_margin_pct >= 30
+                    ? "success"
+                    : data.gross_margin_pct >= 10
+                      ? "warning"
+                      : "destructive"
+                }
               />
             </div>
 
@@ -371,13 +375,13 @@ export default function AuditPage() {
                 </div>
                 <div className="divide-y text-sm">
                   {[
-                    { label: "Gross Sales (before discounts)", value: paiseToRupees(data.total_subtotal_paise), sub: false },
-                    { label: "Discounts Given", value: `− ${paiseToRupees(data.total_discount_paise)}`, sub: true, cls: "text-amber-600" },
-                    { label: "Tax Collected", value: `+ ${paiseToRupees(data.total_tax_paise)}`, sub: true, cls: "text-blue-600" },
-                    { label: "Net Revenue", value: paiseToRupees(data.total_revenue_paise), bold: true },
-                    { label: "Cost of Goods Sold", value: `− ${paiseToRupees(data.total_cogs_paise)}`, sub: true, cls: "text-muted-foreground" },
-                    { label: "Gross Profit", value: paiseToRupees(data.gross_profit_paise), bold: true, cls: marginPositive ? "text-emerald-600" : "text-red-600" },
-                    { label: "Gross Margin %", value: `${data.gross_margin_pct}%`, bold: true, cls: marginPositive ? "text-emerald-600" : "text-red-600" },
+                    { label: "Gross Sales (before discounts)", value: <Money paise={data.total_subtotal_paise} />, sub: false },
+                    { label: "Discounts Given", value: <>− <Money paise={data.total_discount_paise} /></>, sub: true, cls: "text-warning" },
+                    { label: "Tax Collected", value: <>+ <Money paise={data.total_tax_paise} /></>, sub: true, cls: "text-info" },
+                    { label: "Net Revenue", value: <Money paise={data.total_revenue_paise} />, bold: true },
+                    { label: "Cost of Goods Sold", value: <>− <Money paise={data.total_cogs_paise} /></>, sub: true, cls: "text-muted-foreground" },
+                    { label: "Gross Profit", value: <Money paise={data.gross_profit_paise} />, bold: true, cls: marginPositive ? "text-teal-600" : "text-destructive" },
+                    { label: "Gross Margin %", value: `${data.gross_margin_pct}%`, bold: true, cls: marginPositive ? "text-teal-600" : "text-destructive" },
                   ].map(({ label, value, sub, bold, cls }) => (
                     <div key={label} className={`flex justify-between px-4 py-2.5 ${sub ? "bg-muted/10" : ""}`}>
                       <span className={`${bold ? "font-bold" : "text-muted-foreground"} ${cls ?? ""}`}>{label}</span>
@@ -402,10 +406,13 @@ export default function AuditPage() {
                           <span className="font-medium uppercase text-xs bg-muted px-2 py-0.5 rounded font-mono">
                             {method}
                           </span>
-                          <span className="text-xs text-muted-foreground ml-2">{v.count} transaction{v.count !== 1 ? "s" : ""}</span>
+                          {/* Bills, not transactions: a split bill appears under
+                              each tender it used, so these counts can overlap.
+                              The money is what adds up to revenue. */}
+                          <span className="text-xs text-muted-foreground ml-2">{v.count} bill{v.count !== 1 ? "s" : ""}</span>
                         </div>
                         <div className="text-right">
-                          <p className="font-mono font-semibold">{paiseToRupees(v.total_paise)}</p>
+                          <p className="font-mono font-semibold"><Money paise={v.total_paise} /></p>
                           <p className="text-xs text-muted-foreground">
                             {pct(v.total_paise, data.total_revenue_paise)} of revenue
                           </p>
@@ -445,13 +452,13 @@ export default function AuditPage() {
                               <p className="text-[10px] text-muted-foreground font-mono">{p.sku}</p>
                             </td>
                             <td className="px-4 py-2.5 text-right font-mono text-xs">{p.qty_sold}</td>
-                            <td className="px-4 py-2.5 text-right font-mono">{paiseToRupees(p.revenue_paise)}</td>
-                            <td className="px-4 py-2.5 text-right font-mono text-muted-foreground">{paiseToRupees(p.cogs_paise)}</td>
-                            <td className={`px-4 py-2.5 text-right font-mono font-semibold ${pos ? "text-emerald-600" : "text-red-600"}`}>
-                              {paiseToRupees(p.gross_profit_paise)}
+                            <td className="px-4 py-2.5 text-right font-mono"><Money paise={p.revenue_paise} /></td>
+                            <td className="px-4 py-2.5 text-right font-mono text-muted-foreground"><Money paise={p.cogs_paise} /></td>
+                            <td className={`px-4 py-2.5 text-right font-mono font-semibold ${pos ? "text-teal-600" : "text-destructive"}`}>
+                              <Money paise={p.gross_profit_paise} />
                             </td>
                             <td className="px-4 py-2.5 text-right">
-                              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${pos ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
+                              <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${pos ? "bg-teal-100 text-teal-700" : "bg-destructive-bg text-destructive"}`}>
                                 {p.gross_margin_pct}%
                               </span>
                             </td>
@@ -485,11 +492,11 @@ export default function AuditPage() {
                       <tr key={row.date} className="hover:bg-muted/20 transition-colors">
                         <td className="px-4 py-2.5 font-mono text-xs font-medium">{row.date}</td>
                         <td className="px-4 py-2.5 text-right">{row.count}</td>
-                        <td className="px-4 py-2.5 text-right font-mono text-xs text-amber-600">
-                          {row.discount_paise > 0 ? `− ${paiseToRupees(row.discount_paise)}` : "—"}
+                        <td className="px-4 py-2.5 text-right font-mono text-xs text-warning">
+                          {row.discount_paise > 0 ? <>− <Money paise={row.discount_paise} /></> : "—"}
                         </td>
                         <td className="px-4 py-2.5 text-right font-mono font-semibold">
-                          {paiseToRupees(row.revenue_paise)}
+                          <Money paise={row.revenue_paise} />
                         </td>
                         <td className="px-4 py-2.5 text-right">
                           <div className="flex items-center justify-end gap-2">
@@ -552,8 +559,8 @@ export default function AuditPage() {
                                         <span className="text-muted-foreground font-mono text-[10px]">({item.sku})</span>
                                       </td>
                                       <td className="px-3 py-1.5 text-end font-mono">{item.qty}</td>
-                                      <td className="px-3 py-1.5 text-end font-mono">{paiseToRupees(item.unit_price_paise)}</td>
-                                      <td className="px-3 py-1.5 text-end font-mono font-medium">{paiseToRupees(item.subtotal_paise)}</td>
+                                      <td className="px-3 py-1.5 text-end font-mono"><Money paise={item.unit_price_paise} /></td>
+                                      <td className="px-3 py-1.5 text-end font-mono font-medium"><Money paise={item.subtotal_paise} /></td>
                                     </tr>
                                   ))}
                                 </tbody>
@@ -561,12 +568,12 @@ export default function AuditPage() {
                             </div>
                             <div className="flex items-center justify-end gap-3 text-xs">
                               {bill.discount_paise > 0 && (
-                                <span className="text-amber-600">− {paiseToRupees(bill.discount_paise)} discount</span>
+                                <span className="text-warning">− <Money paise={bill.discount_paise} /> discount</span>
                               )}
                               {bill.payment_method && (
                                 <span className="text-muted-foreground uppercase">{bill.payment_method}</span>
                               )}
-                              <span className="font-bold text-sm">Total: {paiseToRupees(bill.total_paise)}</span>
+                              <span className="font-bold text-sm">Total: <Money paise={bill.total_paise} /></span>
                             </div>
                           </div>
                         ))}
@@ -596,6 +603,6 @@ export default function AuditPage() {
         )}
 
       </div>
-    </div>
+    </PageContainer>
   );
 }

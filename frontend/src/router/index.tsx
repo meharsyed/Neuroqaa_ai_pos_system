@@ -8,11 +8,13 @@ import CheckoutPage from "@/pages/CheckoutPage";
 import BillsPage from "@/pages/BillsPage";
 import ShiftsPage from "@/pages/ShiftsPage";
 import CustomersPage from "@/pages/CustomersPage";
+import KhataPage from "@/pages/KhataPage";
 import ReturnsPage from "@/pages/ReturnsPage";
 import ActivityPage from "@/pages/ActivityPage";
 import AuditPage from "@/pages/AuditPage";
 import SettingsPage from "@/pages/SettingsPage";
-
+import UsersPage from "@/pages/UsersPage";
+import QuotationsPage from "@/pages/QuotationsPage";
 export const router = createBrowserRouter([
   {
     path: "/login",
@@ -34,11 +36,14 @@ export const router = createBrowserRouter([
       { path: "/products", element: <ProductsPage /> },
       { path: "/bills",     element: <BillsPage /> },
       { path: "/returns",   element: <ReturnsPage /> },
+      { path: "/quotations", element: <QuotationsPage /> },
       { path: "/customers", element: <CustomersPage /> },
+      { path: "/khata",     element: <KhataPage /> },
       { path: "/shifts",    element: <ShiftsPage /> },
       { path: "/activity",  element: <ActivityPage /> },
       { path: "/audit",     element: <AuditPage /> },
       { path: "/settings",  element: <SettingsPage /> },
+      { path: "/users",     element: <UsersPage /> },
     ],
   },
 ]);
