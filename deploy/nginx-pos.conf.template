@@ -1,0 +1,52 @@
+# nginx server block for the POS — a SIBLING to whatever server block already
+# serves the company website (in /etc/nginx/sites-available/neuroqaa). This
+# file adds a new block; it does not touch that one.
+#
+# Copy to /etc/nginx/sites-available/pos on the server, replace every
+# POS_DOMAIN with the real domain once purchased, then:
+#   sudo ln -s /etc/nginx/sites-available/pos /etc/nginx/sites-enabled/pos
+#   sudo nginx -t                 # must say "syntax is ok" / "test is successful"
+#   sudo systemctl reload nginx   # reload, never restart — reload does not
+#                                 # drop existing connections to the website
+#
+# HTTP-only to start (Certbot rewrites this to add the SSL server block and
+# the redirect automatically — see deploy/server-setup.md step 6).
+server {
+    listen 80;
+    listen [::]:80;
+    server_name POS_DOMAIN;
+
+    client_max_body_size 12M;  # a little above the 10MB product-image cap
+
+    location /static/ {
+        alias /opt/pos-system/backend/staticfiles/;
+    }
+
+    location /media/ {
+        alias /opt/pos-system/backend/media/;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8001/api/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /admin/ {
+        proxy_pass http://127.0.0.1:8001/admin/;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Everything else: the built React app. try_files falls back to
+    # index.html so client-side routing (react-router) works on a hard
+    # refresh of e.g. /suppliers, not just when navigated to from "/".
+    root /opt/pos-system/frontend/dist;
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}

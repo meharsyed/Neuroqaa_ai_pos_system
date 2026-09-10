@@ -1,0 +1,97 @@
+name: Deploy
+
+# Runs only after the existing CI workflow finishes on main, and only if it
+# passed — tests are the gate, this never fires on a broken build. Kept as
+# its own file (not added into ci.yml) so this new, unproven pipeline can
+# never affect the existing, working test workflow.
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write   # to push the backend image to ghcr.io
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # --- Backend: build the image here (GitHub's runner), never on the
+      # 1-vCPU VPS, so a deploy never competes with the live site for CPU. ---
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile.prod
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/pos-backend:latest
+            ghcr.io/${{ github.repository_owner }}/pos-backend:${{ github.sha }}
+
+      # --- Frontend: build the static bundle here too. ---
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      # --- Ship the frontend build to the server. ---
+      - name: Copy frontend build to server
+        uses: burnett01/rsync-deployments@7.0.1
+        with:
+          switches: -avzr --delete
+          path: frontend/dist/
+          remote_path: /opt/pos-system/frontend/dist/
+          remote_host: ${{ secrets.SSH_HOST }}
+          remote_user: ${{ secrets.SSH_USER }}
+          remote_key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      # --- Pull the new backend image and restart just that one container.
+      # This never touches nginx's config, the website's process, or the
+      # website's database — only the POS's own compose project, addressed
+      # by its own directory and container name. ---
+      - name: Deploy backend on the server
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: IMAGE_TAG
+          script: |
+            set -e
+            cd /opt/pos-system
+            git pull origin main
+            echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u "${{ secrets.GHCR_USERNAME }}" --password-stdin
+            export POS_BACKEND_IMAGE="ghcr.io/${{ github.repository_owner }}/pos-backend:$IMAGE_TAG"
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
+            docker image prune -f
+        env:
+          IMAGE_TAG: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Health check
+        run: |
+          sleep 5
+          curl -sSf https://${{ secrets.POS_DOMAIN }}/api/ -o /dev/null || \
+          curl -sSf https://${{ secrets.POS_DOMAIN }}/admin/login/ -o /dev/null

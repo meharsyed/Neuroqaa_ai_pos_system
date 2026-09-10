@@ -1,0 +1,52 @@
+# Production compose file for the POS backend only.
+#
+# No Postgres service here on purpose: this server already runs a native
+# Postgres 14 cluster for the company website. The POS gets its own
+# database and role on that SAME cluster (see deploy/server-setup.md),
+# not a second Postgres process — cheaper on a 1-vCPU box and the
+# standard way to isolate two apps' data on one Postgres instance.
+#
+# No frontend service here either: the built frontend is static files
+# (frontend/dist after `npm run build`), served directly by nginx — no
+# Node process needs to run in production at all.
+#
+# network_mode: host is deliberate, not a shortcut: it lets this container
+# reach the host's Postgres at 127.0.0.1:5432 without changing Postgres's
+# listen_addresses or pg_hba.conf at all — meaning zero configuration
+# changes to the database that's already serving the live website. The
+# tradeoff (no Docker network isolation) is fine for one trusted container
+# on a single-tenant VPS, and Dockerfile.prod binds gunicorn to 127.0.0.1
+# specifically so this container is never reachable from the internet
+# directly — only nginx, running on the same host, can reach it.
+services:
+  backend:
+    # POS_BACKEND_IMAGE lets the automated deploy point at the exact image
+    # GitHub Actions already built and pushed to GHCR (so the server only
+    # ever pulls it, never rebuilds it — building on this 1-vCPU box would
+    # compete with the live website's CPU on every deploy). For the manual
+    # first-time setup in deploy/server-setup.md, the `build:` section below
+    # is used instead via `docker compose up -d --build`, with no
+    # POS_BACKEND_IMAGE set, producing a local image tagged pos-backend:latest.
+    image: ${POS_BACKEND_IMAGE:-pos-backend:latest}
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: pos-backend
+    network_mode: "host"
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env.prod
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.cloud
+    volumes:
+      # Static/media land on the host filesystem here so nginx can serve
+      # them directly — nginx never proxies into this container for files.
+      - ./backend/staticfiles:/app/staticfiles
+      - ./backend/media:/app/media
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/admin/login/', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s

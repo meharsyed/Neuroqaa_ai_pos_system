@@ -41,9 +41,19 @@ sentry_sdk.init(
     traces_sample_rate=0.2,
 )
 
-STORAGES = {
-    "default": {"BACKEND": "storages.backends.s3boto3.S3Boto3Storage"},
-    "staticfiles": {"BACKEND": "storages.backends.s3boto3.S3StaticStorage"},
-}
+# Media/static storage: local disk by default, served directly by nginx —
+# appropriate (and free) for a single-VPS deployment at this scale. Set
+# AWS_STORAGE_BUCKET_NAME in .env to switch to S3 later; no code change
+# needed beyond that.
 AWS_STORAGE_BUCKET_NAME = env("AWS_STORAGE_BUCKET_NAME", default="")
-AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", default="us-east-1")
+if AWS_STORAGE_BUCKET_NAME:
+    STORAGES = {
+        "default": {"BACKEND": "storages.backends.s3boto3.S3Boto3Storage"},
+        "staticfiles": {"BACKEND": "storages.backends.s3boto3.S3StaticStorage"},
+    }
+    AWS_S3_REGION_NAME = env("AWS_S3_REGION_NAME", default="us-east-1")
+else:
+    STORAGES = {
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {"BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"},
+    }

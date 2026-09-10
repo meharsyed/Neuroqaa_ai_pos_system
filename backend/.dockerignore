@@ -1,0 +1,13 @@
+venv311/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.coverage
+data/
+media/
+staticfiles/
+.env
+.env.example
+*.sqlite3
+.git/
